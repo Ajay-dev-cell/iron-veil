@@ -1,0 +1,60 @@
+# Project Roadmap: Database Anonymization Proxy
+
+## Phase 1: The "Walking Skeleton" (Core Proxy Logic)
+- [ ] **1.1 Rust Project Scaffolding**
+    - [ ] Initialize Rust project with `cargo new`
+    - [ ] Add dependencies: `tokio`, `clap`, `tracing`, `bytes`, `tokio-util`
+    - [ ] Set up basic TCP listener and upstream connection forwarding
+- [ ] **1.2 Protocol Parsing (PostgreSQL)**
+    - [ ] Implement `tokio-util` Codec for Postgres Wire Protocol (v3.0)
+    - [ ] Parse `StartupMessage` and Handshake
+    - [ ] Parse `SimpleQuery` and `ExtendedQuery` flows
+    - [ ] Intercept `RowDescription` packets (metadata)
+    - [ ] Intercept `DataRow` packets (actual data)
+- [ ] **1.3 Interception Middleware**
+    - [ ] Create `PacketInterceptor` trait
+    - [ ] Implement logic to modify `DataRow` byte buffers
+    - [ ] Ensure packet length headers are recalculated correctly
+- [ ] **1.4 Basic Faker Implementation**
+    - [ ] Integrate `fake-rs` crate
+    - [ ] Hardcode a rule to replace a specific column (e.g., "email") with fake data
+
+## Phase 2: The "Smart" Engine (Configuration & Detection)
+- [ ] **2.1 Configuration System**
+    - [ ] Define `proxy.yaml` structure
+    - [ ] Implement config loader
+    - [ ] Map table/column names to masking strategies
+- [ ] **2.2 Deterministic Masking**
+    - [ ] Implement seeded hashing / format-preserving encryption
+    - [ ] Ensure "John Doe" always maps to the same fake identity
+- [ ] **2.3 NLP & Heuristic Detection**
+    - [ ] Implement Regex scanner for PII (Credit Cards, SSNs, Emails)
+    - [ ] (Optional) Integrate `rust-bert` or `ort` for NLP-based name detection
+- [ ] **2.4 Complex Type Handling**
+    - [ ] Support JSON/JSONB masking
+    - [ ] Support Array types
+
+## Phase 3: Control Plane (Web UI)
+- [ ] **3.1 Management API (Rust)**
+    - [ ] Set up `Axum` web server alongside the proxy
+    - [ ] Implement endpoints: `/connections`, `/schema`, `/rules`, `/logs`
+- [ ] **3.2 Frontend Setup**
+    - [ ] Initialize Next.js or Tauri project
+    - [ ] Setup Tailwind CSS and Shadcn/UI
+- [ ] **3.3 PII Scanner UI**
+    - [ ] Create "Scan Database" feature
+    - [ ] Display PII report and allow "One-click Apply" for rules
+- [ ] **3.4 Live Query Inspector**
+    - [ ] Build "Network Tab" for DB queries
+    - [ ] Show diff view (Original vs. Masked Data)
+
+## Phase 4: Enterprise Hardening
+- [ ] **4.1 Security**
+    - [ ] Implement TLS termination (Client -> Proxy)
+    - [ ] Implement Upstream TLS (Proxy -> Prod DB)
+- [ ] **4.2 Performance**
+    - [ ] Optimize for Zero-Copy parsing where possible
+    - [ ] Implement Connection Pooling (`bb8` or `deadpool`)
+- [ ] **4.3 MySQL Support**
+    - [ ] Implement MySQL Wire Protocol parser
+    - [ ] Adapt interception logic for MySQL packets
