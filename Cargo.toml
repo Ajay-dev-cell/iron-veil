@@ -13,3 +13,4 @@ tokio-util = { version = "0.7", features = ["codec", "net"] }
 anyhow = "1.0"
 thiserror = "1.0"
 futures = "0.3.31"
+fake = { version = "4.4.0", features = ["derive"] }

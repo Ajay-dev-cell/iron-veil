@@ -15,9 +15,9 @@
     - [x] Create `PacketInterceptor` trait
     - [x] Implement logic to modify `DataRow` byte buffers
     - [x] Ensure packet length headers are recalculated correctly
-- [ ] **1.4 Basic Faker Implementation**
-    - [ ] Integrate `fake-rs` crate
-    - [ ] Hardcode a rule to replace a specific column (e.g., "email") with fake data
+- [x] **1.4 Basic Faker Implementation**
+    - [x] Integrate `fake-rs` crate
+    - [x] Hardcode a rule to replace a specific column (e.g., "email") with fake data
 
 ## Phase 2: The "Smart" Engine (Configuration & Detection)
 - [ ] **2.1 Configuration System**

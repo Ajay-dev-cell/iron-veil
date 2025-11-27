@@ -1,5 +1,7 @@
 use crate::protocol::postgres::{DataRow, RowDescription};
 use anyhow::Result;
+use fake::faker::internet::en::SafeEmail;
+use fake::Fake;
 
 pub trait PacketInterceptor {
     fn on_row_description(&mut self, msg: &RowDescription);
@@ -40,10 +42,9 @@ impl PacketInterceptor for Anonymizer {
             if idx < msg.values.len() {
                 if let Some(val) = &mut msg.values[idx] {
                     // Replace with fake email
-                    // For now, hardcoded "masked@example.com"
-                    let fake_val = b"masked@example.com";
+                    let fake_email: String = SafeEmail().fake();
                     val.clear();
-                    val.extend_from_slice(fake_val);
+                    val.extend_from_slice(fake_email.as_bytes());
                 }
             }
         }
