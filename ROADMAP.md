@@ -1,10 +1,10 @@
 # Project Roadmap: Database Anonymization Proxy
 
 ## Phase 1: The "Walking Skeleton" (Core Proxy Logic)
-- [ ] **1.1 Rust Project Scaffolding**
-    - [ ] Initialize Rust project with `cargo new`
-    - [ ] Add dependencies: `tokio`, `clap`, `tracing`, `bytes`, `tokio-util`
-    - [ ] Set up basic TCP listener and upstream connection forwarding
+- [x] **1.1 Rust Project Scaffolding**
+    - [x] Initialize Rust project with `cargo new`
+    - [x] Add dependencies: `tokio`, `clap`, `tracing`, `bytes`, `tokio-util`
+    - [x] Set up basic TCP listener and upstream connection forwarding
 - [ ] **1.2 Protocol Parsing (PostgreSQL)**
     - [ ] Implement `tokio-util` Codec for Postgres Wire Protocol (v3.0)
     - [ ] Parse `StartupMessage` and Handshake

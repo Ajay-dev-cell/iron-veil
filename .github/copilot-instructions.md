@@ -3,7 +3,7 @@
 You are an expert Rust developer building a high-performance database proxy for PII anonymization.
 
 ## Tech Stack
-- **Core**: Rust (2021 edition)
+- **Core**: Rust (2024 edition)
 - **Async Runtime**: `tokio`
 - **Web Server**: `axum`
 - **CLI**: `clap`
