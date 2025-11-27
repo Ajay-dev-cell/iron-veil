@@ -1,0 +1,9 @@
+rules:
+  - table: "users"
+    column: "email"
+    strategy: "email"
+  - table: "users"
+    column: "phone_number"
+    strategy: "phone"
+  - column: "address" # Global rule for any column named "address"
+    strategy: "address"

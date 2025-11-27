@@ -5,12 +5,14 @@ use tracing_subscriber::FmtSubscriber;
 
 mod protocol;
 mod interceptor;
+mod config;
 
 use futures::{SinkExt, StreamExt};
 use tokio::io::AsyncWriteExt;
 use tokio_util::codec::Framed;
 use crate::protocol::postgres::{PostgresCodec, PgMessage};
 use crate::interceptor::{PacketInterceptor, Anonymizer};
+use crate::config::AppConfig;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -26,6 +28,10 @@ struct Args {
     /// Upstream database port
     #[arg(long, default_value_t = 5432)]
     upstream_port: u16,
+
+    /// Path to configuration file
+    #[arg(long, default_value = "proxy.yaml")]
+    config: String,
 }
 
 #[tokio::main]
@@ -39,10 +45,17 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
+    // Load configuration
+    let config = AppConfig::load(&args.config)?;
+    info!("Loaded {} masking rules from {}", config.rules.len(), args.config);
+
     info!("Starting DB Proxy on port {}", args.port);
     info!("Forwarding to upstream at {}:{}", args.upstream_host, args.upstream_port);
 
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", args.port)).await?;
+
+    // Wrap config in Arc to share across tasks (though we clone it for now as it's small)
+    let config = std::sync::Arc::new(config);
 
     loop {
         let (client_socket, client_addr) = listener.accept().await?;
@@ -50,21 +63,22 @@ async fn main() -> Result<()> {
 
         let upstream_host = args.upstream_host.clone();
         let upstream_port = args.upstream_port;
+        let config = config.clone();
 
         tokio::spawn(async move {
-            if let Err(e) = process_connection(client_socket, upstream_host, upstream_port).await {
+            if let Err(e) = process_connection(client_socket, upstream_host, upstream_port, config).await {
                 tracing::error!("Connection error: {}", e);
             }
         });
     }
 }
 
-async fn process_connection(client_socket: tokio::net::TcpStream, upstream_host: String, upstream_port: u16) -> Result<()> {
+async fn process_connection(client_socket: tokio::net::TcpStream, upstream_host: String, upstream_port: u16, config: std::sync::Arc<AppConfig>) -> Result<()> {
     let upstream_socket = tokio::net::TcpStream::connect(format!("{}:{}", upstream_host, upstream_port)).await?;
     
     let mut client_framed = Framed::new(client_socket, PostgresCodec::new());
     let mut upstream_framed = Framed::new(upstream_socket, PostgresCodec::new_upstream());
-    let mut interceptor = Anonymizer::new();
+    let mut interceptor = Anonymizer::new(config);
 
     loop {
         tokio::select! {

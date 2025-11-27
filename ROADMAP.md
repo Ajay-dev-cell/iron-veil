@@ -20,10 +20,10 @@
     - [x] Hardcode a rule to replace a specific column (e.g., "email") with fake data
 
 ## Phase 2: The "Smart" Engine (Configuration & Detection)
-- [ ] **2.1 Configuration System**
-    - [ ] Define `proxy.yaml` structure
-    - [ ] Implement config loader
-    - [ ] Map table/column names to masking strategies
+- [x] **2.1 Configuration System**
+    - [x] Define `proxy.yaml` structure
+    - [x] Implement config loader
+    - [x] Map table/column names to masking strategies
 - [ ] **2.2 Deterministic Masking**
     - [ ] Implement seeded hashing / format-preserving encryption
     - [ ] Ensure "John Doe" always maps to the same fake identity
