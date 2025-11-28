@@ -58,3 +58,8 @@
 - [ ] **4.3 MySQL Support**
     - [ ] Implement MySQL Wire Protocol parser
     - [ ] Adapt interception logic for MySQL packets
+
+## Phase 5: Deployment & Infrastructure
+- [ ] **5.1 Containerization**
+    - [ ] Create production-ready `Dockerfile` (Multi-stage build)
+    - [ ] Create `docker-compose.yml` for full stack simulation (App + Proxy + DB)
