@@ -106,16 +106,16 @@ impl Decoder for PostgresCodec {
             }
 
             self.is_startup = false; // Next messages will be regular
-            return Ok(Some(PgMessage::Startup(StartupMessage {
+            Ok(Some(PgMessage::Startup(StartupMessage {
                 protocol_version,
                 parameters,
-            })));
+            })))
 
         } else {
             // Regular packet: [Type (1 byte)] [Length (4 bytes)] [Payload...]
             // Note: The length includes the 4 bytes of the length field itself, but NOT the type byte.
             
-            if src.len() < 1 {
+            if src.is_empty() {
                 return Ok(None);
             }
             

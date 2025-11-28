@@ -28,7 +28,7 @@
     - [x] Implement seeded hashing / format-preserving encryption
     - [x] Ensure "John Doe" always maps to the same fake identity
 - [ ] **2.3 NLP & Heuristic Detection**
-    - [ ] Implement Regex scanner for PII (Credit Cards, SSNs, Emails)
+    - [x] Implement Regex scanner for PII (Credit Cards, SSNs, Emails)
     - [ ] (Optional) Integrate `rust-bert` or `ort` for NLP-based name detection
 - [ ] **2.4 Complex Type Handling**
     - [ ] Support JSON/JSONB masking

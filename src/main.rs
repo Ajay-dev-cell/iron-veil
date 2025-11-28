@@ -6,6 +6,7 @@ use tracing_subscriber::FmtSubscriber;
 mod protocol;
 mod interceptor;
 mod config;
+mod scanner;
 
 use futures::{SinkExt, StreamExt};
 use tokio::io::AsyncWriteExt;

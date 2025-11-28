@@ -23,6 +23,10 @@ docker exec -i pg-test psql -U postgres -c "
 DROP TABLE IF EXISTS users;
 CREATE TABLE users (id SERIAL PRIMARY KEY, email TEXT, phone_number TEXT, address TEXT);
 INSERT INTO users (email, phone_number, address) VALUES ('real.human@gmail.com', '555-0199', '123 Main St, New York, NY');
+
+DROP TABLE IF EXISTS unconfigured_table;
+CREATE TABLE unconfigured_table (id SERIAL PRIMARY KEY, secret_email TEXT, raw_cc TEXT, plain_text TEXT);
+INSERT INTO unconfigured_table (secret_email, raw_cc, plain_text) VALUES ('hidden.person@example.com', '4532-1234-5678-9012', 'This is just some text');
 " > /dev/null
 
 # 3. Run Query via Proxy
@@ -31,7 +35,12 @@ echo "Expected: Masked data (e.g., fake email)"
 echo "----------------------------------------"
 
 # Use host.docker.internal for macOS compatibility
+echo "--- Querying Configured Table (Explicit Rules) ---"
 docker run --rm -i -e PGPASSWORD=password postgres psql -h host.docker.internal -p 6543 -U postgres -c "SELECT * FROM users;"
+
+echo "--- Querying Unconfigured Table (Heuristic Detection) ---"
+echo "Expected: 'secret_email' masked as email, 'raw_cc' masked as credit card, 'plain_text' unchanged."
+docker run --rm -i -e PGPASSWORD=password postgres psql -h host.docker.internal -p 6543 -U postgres -c "SELECT * FROM unconfigured_table;"
 
 echo "----------------------------------------"
 echo -e "${GREEN}Test Complete!${NC}"
