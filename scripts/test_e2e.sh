@@ -31,6 +31,10 @@ INSERT INTO unconfigured_table (secret_email, raw_cc, plain_text) VALUES ('hidde
 DROP TABLE IF EXISTS json_table;
 CREATE TABLE json_table (id SERIAL PRIMARY KEY, data TEXT);
 INSERT INTO json_table (data) VALUES ('{"user": {"email": "json.user@example.com"}, "payment": {"cc": "1234-5678-9012-3456"}}');
+
+DROP TABLE IF EXISTS array_table;
+CREATE TABLE array_table (id SERIAL PRIMARY KEY, tags TEXT[]);
+INSERT INTO array_table (tags) VALUES ('{"array.email@example.com", "normal_tag", "9876-5432-1098-7654"}');
 EOF
 
 # 3. Run Query via Proxy
@@ -49,6 +53,10 @@ docker run --rm -i -e PGPASSWORD=password postgres psql -h host.docker.internal 
 echo "--- Querying JSON Table (Recursive JSON Masking) ---"
 echo "Expected: Email and CC inside JSON should be masked."
 docker run --rm -i -e PGPASSWORD=password postgres psql -h host.docker.internal -p 6543 -U postgres -c "SELECT * FROM json_table;"
+
+echo "--- Querying Array Table (Array Masking) ---"
+echo "Expected: Email and CC inside Array should be masked."
+docker run --rm -i -e PGPASSWORD=password postgres psql -h host.docker.internal -p 6543 -U postgres -c "SELECT * FROM array_table;"
 
 echo "----------------------------------------"
 echo -e "${GREEN}Test Complete!${NC}"

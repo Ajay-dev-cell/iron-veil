@@ -32,7 +32,7 @@
     - [ ] (Optional) Integrate `rust-bert` or `ort` for NLP-based name detection
 - [ ] **2.4 Complex Type Handling**
     - [x] Support JSON/JSONB masking
-    - [ ] Support Array types
+    - [x] Support Array types
 
 ## Phase 3: Control Plane (Web UI)
 - [ ] **3.1 Management API (Rust)**

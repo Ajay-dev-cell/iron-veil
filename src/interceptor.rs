@@ -55,6 +55,78 @@ fn mask_json_recursively(val: &mut serde_json::Value, scanner: &PiiScanner) {
     }
 }
 
+fn mask_postgres_array(raw: &str, scanner: &PiiScanner) -> Option<String> {
+    if !raw.starts_with('{') || !raw.ends_with('}') {
+        return None;
+    }
+
+    let content = &raw[1..raw.len()-1];
+    // Simple parser: split by comma, respecting quotes
+    let mut elements = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let mut escaped = false;
+
+    for c in content.chars() {
+        if escaped {
+            current.push(c);
+            escaped = false;
+        } else if c == '\\' {
+            escaped = true;
+            current.push(c); // Keep escape char for now
+        } else if c == '"' {
+            in_quotes = !in_quotes;
+            current.push(c);
+        } else if c == ',' && !in_quotes {
+            elements.push(current.clone());
+            current.clear();
+        } else {
+            current.push(c);
+        }
+    }
+    elements.push(current);
+
+    let mut changed = false;
+    let mut new_elements = Vec::new();
+
+    for elem in elements {
+        let trimmed = elem.trim();
+        // Check if quoted
+        let (val, _is_quoted) = if trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() >= 2 {
+            (&trimmed[1..trimmed.len()-1], true)
+        } else {
+            (trimmed, false)
+        };
+
+        // Unescape if needed (simplified)
+        let clean_val = val.replace("\\\"", "\"").replace("\\\\", "\\");
+
+        if let Some(pii_type) = scanner.scan(&clean_val) {
+            let strategy = match pii_type {
+                PiiType::Email => "email",
+                PiiType::CreditCard => "credit_card",
+            };
+            
+            let mut hasher = DefaultHasher::new();
+            clean_val.hash(&mut hasher);
+            let seed = hasher.finish();
+            
+            let fake = generate_fake_data(strategy, seed);
+            // Always quote masked values to be safe
+            new_elements.push(format!("\"{}\"", fake));
+            changed = true;
+        } else {
+            new_elements.push(elem);
+        }
+    }
+
+    if changed {
+        Some(format!("{{{}}}", new_elements.join(",")))
+    } else {
+        None
+    }
+}
+
 pub trait PacketInterceptor {
     fn on_row_description(&mut self, msg: &RowDescription);
     fn on_data_row(&mut self, msg: DataRow) -> Result<DataRow>;
@@ -131,12 +203,25 @@ impl PacketInterceptor for Anonymizer {
                         let trimmed = s.trim();
                         if (trimmed.starts_with('{') && trimmed.ends_with('}')) || 
                            (trimmed.starts_with('[') && trimmed.ends_with(']')) {
-                            if let Ok(mut json_val) = serde_json::from_str::<serde_json::Value>(s) {
-                                mask_json_recursively(&mut json_val, &self.scanner);
-                                if let Ok(new_json) = serde_json::to_string(&json_val) {
-                                    val.clear();
-                                    val.extend_from_slice(new_json.as_bytes());
-                                    continue;
+                            // Attempt JSON parsing
+                            match serde_json::from_str::<serde_json::Value>(s) {
+                                Ok(mut json_val) => {
+                                    mask_json_recursively(&mut json_val, &self.scanner);
+                                    if let Ok(new_json) = serde_json::to_string(&json_val) {
+                                        val.clear();
+                                        val.extend_from_slice(new_json.as_bytes());
+                                        continue;
+                                    }
+                                },
+                                Err(_) => {
+                                    // Not valid JSON, maybe Postgres Array?
+                                    if trimmed.starts_with('{') && trimmed.ends_with('}') {
+                                        if let Some(masked_array) = mask_postgres_array(s, &self.scanner) {
+                                            val.clear();
+                                            val.extend_from_slice(masked_array.as_bytes());
+                                            continue;
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -289,5 +374,44 @@ mod tests {
         assert!(tag_email.contains("@"));
         
         assert_eq!(tag_normal, "not-pii");
+    }
+
+    #[test]
+    fn test_array_masking() {
+        let config = Arc::new(AppConfig { rules: vec![] });
+        let mut anonymizer = Anonymizer::new(config);
+
+        // Postgres array format: {val1,val2}
+        let array_data = r#"{"test@example.com","normal_val","1234-5678-9012-3456"}"#;
+
+        let mut row = DataRow {
+            values: vec![
+                Some(BytesMut::from(array_data.as_bytes())),
+            ],
+        };
+
+        row = anonymizer.on_data_row(row).unwrap();
+        let val = std::str::from_utf8(row.values[0].as_ref().unwrap()).unwrap();
+        
+        // Should be masked
+        assert!(val.starts_with('{'));
+        assert!(val.ends_with('}'));
+        
+        // Split by comma to check elements
+        let content = &val[1..val.len()-1];
+        let parts: Vec<&str> = content.split(',').collect();
+        
+        assert_eq!(parts.len(), 3);
+        
+        let email = parts[0];
+        let normal = parts[1];
+        let cc = parts[2];
+        
+        assert_ne!(email, "\"test@example.com\"");
+        assert!(email.contains("@"));
+        
+        assert_eq!(normal, "\"normal_val\""); // Should be unchanged and still quoted
+        
+        assert_ne!(cc, "\"1234-5678-9012-3456\"");
     }
 }
