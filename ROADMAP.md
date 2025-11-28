@@ -35,9 +35,9 @@
     - [x] Support Array types
 
 ## Phase 3: Control Plane (Web UI)
-- [ ] **3.1 Management API (Rust)**
-    - [ ] Set up `Axum` web server alongside the proxy
-    - [ ] Implement endpoints: `/connections`, `/schema`, `/rules`, `/logs`
+- [x] **3.1 Management API (Rust)**
+    - [x] Set up `Axum` web server alongside the proxy
+    - [x] Implement endpoints: `/connections`, `/schema`, `/rules`, `/logs`
 - [ ] **3.2 Frontend Setup**
     - [ ] Initialize Next.js or Tauri project
     - [ ] Setup Tailwind CSS and Shadcn/UI

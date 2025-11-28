@@ -7,6 +7,8 @@ mod protocol;
 mod interceptor;
 mod config;
 mod scanner;
+mod api;
+mod state;
 
 use futures::{SinkExt, StreamExt};
 use tokio::io::AsyncWriteExt;
@@ -14,6 +16,8 @@ use tokio_util::codec::Framed;
 use crate::protocol::postgres::{PostgresCodec, PgMessage};
 use crate::interceptor::{PacketInterceptor, Anonymizer};
 use crate::config::AppConfig;
+use crate::state::AppState;
+use std::sync::atomic::Ordering;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -33,6 +37,10 @@ struct Args {
     /// Path to configuration file
     #[arg(long, default_value = "proxy.yaml")]
     config: String,
+
+    /// Management API port
+    #[arg(long, default_value_t = 3000)]
+    api_port: u16,
 }
 
 #[tokio::main]
@@ -50,6 +58,16 @@ async fn main() -> Result<()> {
     let config = AppConfig::load(&args.config)?;
     info!("Loaded {} masking rules from {}", config.rules.len(), args.config);
 
+    // Initialize shared state
+    let state = AppState::new(config.clone());
+
+    // Start Management API in a separate task
+    let api_port = args.api_port;
+    let api_state = state.clone();
+    tokio::spawn(async move {
+        api::start_api_server(api_port, api_state).await;
+    });
+
     info!("Starting DB Proxy on port {}", args.port);
     info!("Forwarding to upstream at {}:{}", args.upstream_host, args.upstream_port);
 
@@ -65,9 +83,14 @@ async fn main() -> Result<()> {
         let upstream_host = args.upstream_host.clone();
         let upstream_port = args.upstream_port;
         let config = config.clone();
+        let state = state.clone();
 
         tokio::spawn(async move {
-            if let Err(e) = process_connection(client_socket, upstream_host, upstream_port, config).await {
+            state.active_connections.fetch_add(1, Ordering::Relaxed);
+            let result = process_connection(client_socket, upstream_host, upstream_port, config).await;
+            state.active_connections.fetch_sub(1, Ordering::Relaxed);
+
+            if let Err(e) = result {
                 tracing::error!("Connection error: {}", e);
             }
         });

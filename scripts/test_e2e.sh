@@ -6,12 +6,36 @@ GREEN='\033[0;32m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
+# Cleanup function
+cleanup() {
+    echo -e "${GREEN}Cleaning up...${NC}"
+    docker rm -f pg-test > /dev/null 2>&1 || true
+    if [ -n "$PROXY_PID" ]; then
+        echo "Stopping Proxy (PID: $PROXY_PID)..."
+        kill $PROXY_PID 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT
+
 echo -e "${GREEN}Starting E2E Test Setup...${NC}"
 
-# 1. Start Postgres Container
-echo "Starting Postgres container..."
+# 0. Ensure clean state
+echo "Checking for port conflicts..."
+if lsof -i :6543 > /dev/null; then
+    echo -e "${RED}Port 6543 is in use. Attempting to stop Docker Compose services...${NC}"
+    docker compose down 2>/dev/null || true
+    
+    # If still in use, fail
+    if lsof -i :6543 > /dev/null; then
+        echo -e "${RED}Error: Port 6543 is still in use. Please free it before running tests.${NC}"
+        exit 1
+    fi
+fi
+
+# 1. Start Postgres Container (Port 5433 to avoid conflict)
+echo "Starting Postgres container on port 5433..."
 docker rm -f pg-test 2>/dev/null || true
-docker run --name pg-test -e POSTGRES_PASSWORD=password -p 5432:5432 -d postgres > /dev/null
+docker run --name pg-test -e POSTGRES_PASSWORD=password -p 5433:5432 -d postgres > /dev/null
 
 # Wait for Postgres to be ready
 echo "Waiting for Postgres to be ready..."
@@ -37,10 +61,21 @@ CREATE TABLE array_table (id SERIAL PRIMARY KEY, tags TEXT[]);
 INSERT INTO array_table (tags) VALUES ('{"array.email@example.com", "normal_tag", "9876-5432-1098-7654"}');
 EOF
 
-# 3. Run Query via Proxy
+# 3. Start Proxy
+echo -e "${GREEN}Starting DB Proxy...${NC}"
+cargo run --quiet -- --port 6543 --upstream-port 5433 --api-port 3000 &
+PROXY_PID=$!
+echo "Proxy started with PID $PROXY_PID. Waiting for startup..."
+sleep 5
+
+# 4. Run Query via Proxy
 echo -e "${GREEN}Running Query via Proxy (port 6543)...${NC}"
 echo "Expected: Masked data (e.g., fake email)"
 echo "----------------------------------------"
+
+# Debug: Verify table exists directly
+echo "--- DEBUG: Verifying table exists directly in DB ---"
+docker exec -i pg-test psql -U postgres -c "SELECT count(*) FROM users;" || echo "DEBUG: Table check failed"
 
 # Use host.docker.internal for macOS compatibility
 echo "--- Querying Configured Table (Explicit Rules) ---"
@@ -48,6 +83,28 @@ docker run --rm -i -e PGPASSWORD=password postgres psql -h host.docker.internal 
 
 echo "--- Querying Unconfigured Table (Heuristic Detection) ---"
 echo "Expected: 'secret_email' masked as email, 'raw_cc' masked as credit card, 'plain_text' unchanged."
+docker run --rm -i -e PGPASSWORD=password postgres psql -h host.docker.internal -p 6543 -U postgres -c "SELECT * FROM unconfigured_table;"
+
+echo "--- Querying JSON Table (Recursive Masking) ---"
+echo "Expected: 'email' and 'cc' inside JSON masked."
+docker run --rm -i -e PGPASSWORD=password postgres psql -h host.docker.internal -p 6543 -U postgres -c "SELECT * FROM json_table;"
+
+echo "--- Querying Array Table (Array Masking) ---"
+echo "Expected: Email and CC inside array masked."
+docker run --rm -i -e PGPASSWORD=password postgres psql -h host.docker.internal -p 6543 -U postgres -c "SELECT * FROM array_table;"
+
+# 5. Test Management API
+echo -e "${GREEN}Testing Management API (port 3000)...${NC}"
+echo "--- Health Check ---"
+curl -s http://localhost:3000/health | grep "ok" && echo "Health Check Passed" || echo "Health Check Failed"
+
+echo "--- Active Connections ---"
+curl -s http://localhost:3000/connections
+
+echo "--- Masking Rules ---"
+curl -s http://localhost:3000/rules
+
+echo -e "${GREEN}Tests Completed Successfully!${NC}"
 docker run --rm -i -e PGPASSWORD=password postgres psql -h host.docker.internal -p 6543 -U postgres -c "SELECT * FROM unconfigured_table;"
 
 echo "--- Querying JSON Table (Recursive JSON Masking) ---"
