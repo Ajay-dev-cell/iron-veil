@@ -63,7 +63,7 @@ EOF
 
 # 3. Start Proxy
 echo -e "${GREEN}Starting DB Proxy...${NC}"
-cargo run --quiet -- --port 6543 --upstream-port 5433 --api-port 3000 &
+cargo run --quiet -- --port 6543 --upstream-port 5433 --api-port 3001 &
 PROXY_PID=$!
 echo "Proxy started with PID $PROXY_PID. Waiting for startup..."
 sleep 5
@@ -94,15 +94,15 @@ echo "Expected: Email and CC inside array masked."
 docker run --rm -i -e PGPASSWORD=password postgres psql -h host.docker.internal -p 6543 -U postgres -c "SELECT * FROM array_table;"
 
 # 5. Test Management API
-echo -e "${GREEN}Testing Management API (port 3000)...${NC}"
+echo -e "${GREEN}Testing Management API (port 3001)...${NC}"
 echo "--- Health Check ---"
-curl -s http://localhost:3000/health | grep "ok" && echo "Health Check Passed" || echo "Health Check Failed"
+curl -s http://localhost:3001/health | grep "ok" && echo "Health Check Passed" || echo "Health Check Failed"
 
 echo "--- Active Connections ---"
-curl -s http://localhost:3000/connections
+curl -s http://localhost:3001/connections
 
 echo "--- Masking Rules ---"
-curl -s http://localhost:3000/rules
+curl -s http://localhost:3001/rules
 
 echo -e "${GREEN}Tests Completed Successfully!${NC}"
 docker run --rm -i -e PGPASSWORD=password postgres psql -h host.docker.internal -p 6543 -U postgres -c "SELECT * FROM unconfigured_table;"

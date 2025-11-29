@@ -38,9 +38,10 @@
 - [x] **3.1 Management API (Rust)**
     - [x] Set up `Axum` web server alongside the proxy
     - [x] Implement endpoints: `/connections`, `/schema`, `/rules`, `/logs`
-- [ ] **3.2 Frontend Setup**
-    - [ ] Initialize Next.js or Tauri project
-    - [ ] Setup Tailwind CSS and Shadcn/UI
+- [x] **3.2 Frontend Setup**
+    - [x] Initialize Next.js project with Tailwind & TypeScript
+    - [x] Setup Shadcn/UI-style components and "Obsidian" Dark Theme
+    - [x] Implement Sidebar Layout and Dashboard with Real-time Data
 - [ ] **3.3 PII Scanner UI**
     - [ ] Create "Scan Database" feature
     - [ ] Display PII report and allow "One-click Apply" for rules
