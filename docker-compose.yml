@@ -4,13 +4,14 @@ services:
     build: .
     ports:
       - "6543:6543"
+      - "3001:3001"
     depends_on:
       - postgres
     environment:
       - RUST_LOG=info
     volumes:
       - ./proxy.yaml:/usr/local/bin/proxy.yaml
-    command: ["./db-proxy", "--upstream-host", "postgres", "--upstream-port", "5432", "--config", "proxy.yaml"]
+    command: ["./db-proxy", "--upstream-host", "postgres", "--upstream-port", "5432", "--config", "proxy.yaml", "--api-port", "3001"]
 
   # The Upstream Database (Production Simulation)
   postgres:

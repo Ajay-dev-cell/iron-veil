@@ -21,8 +21,9 @@ COPY --from=builder /usr/src/app/target/release/db-proxy .
 # Copy the configuration file (default)
 COPY --from=builder /usr/src/app/proxy.yaml .
 
-# Expose the proxy port
+# Expose the proxy port and API port
 EXPOSE 6543
+EXPOSE 3001
 
 # Run the binary
 CMD ["./db-proxy", "--upstream-host", "postgres", "--upstream-port", "5432", "--config", "proxy.yaml"]
