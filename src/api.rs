@@ -1,6 +1,6 @@
 use axum::{
     extract::State,
-    routing::get,
+    routing::{get, post},
     Router,
     Json,
 };
@@ -9,13 +9,15 @@ use std::net::SocketAddr;
 use tower_http::trace::TraceLayer;
 use tower_http::cors::CorsLayer;
 use crate::state::AppState;
+use crate::config::MaskingRule;
 use std::sync::atomic::Ordering;
 
 pub async fn start_api_server(port: u16, state: AppState) {
     // Define the routes
     let app = Router::new()
         .route("/health", get(health_check))
-        .route("/rules", get(get_rules))
+        .route("/rules", get(get_rules).post(add_rule))
+        .route("/scan", post(scan_database))
         .route("/connections", get(get_connections))
         .route("/schema", get(get_schema))
         .route("/logs", get(get_logs))
@@ -39,7 +41,54 @@ async fn health_check() -> Json<Value> {
 }
 
 async fn get_rules(State(state): State<AppState>) -> Json<Value> {
-    Json(json!(*state.config))
+    let config = state.config.read().await;
+    Json(json!(*config))
+}
+
+async fn add_rule(State(state): State<AppState>, Json(rule): Json<MaskingRule>) -> Json<Value> {
+    let mut config = state.config.write().await;
+    config.rules.push(rule);
+    Json(json!({ "status": "success", "rules_count": config.rules.len() }))
+}
+
+async fn scan_database() -> Json<Value> {
+    // Mocked scan results for Phase 3.3
+    // In a real implementation, this would query the upstream DB and sample data.
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await; // Simulate work
+    
+    Json(json!({
+        "status": "completed",
+        "findings": [
+            {
+                "table": "users",
+                "column": "email",
+                "type": "Email",
+                "confidence": 0.99,
+                "sample": "jdoe@example.com"
+            },
+            {
+                "table": "users",
+                "column": "phone_number",
+                "type": "Phone",
+                "confidence": 0.95,
+                "sample": "+1-555-0123"
+            },
+            {
+                "table": "orders",
+                "column": "shipping_address",
+                "type": "Address",
+                "confidence": 0.85,
+                "sample": "123 Main St, Springfield"
+            },
+            {
+                "table": "customers",
+                "column": "cc_num",
+                "type": "CreditCard",
+                "confidence": 0.98,
+                "sample": "4532-xxxx-xxxx-1234"
+            }
+        ]
+    }))
 }
 
 async fn get_connections(State(state): State<AppState>) -> Json<Value> {

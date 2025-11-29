@@ -127,20 +127,22 @@ fn mask_postgres_array(raw: &str, scanner: &PiiScanner) -> Option<String> {
     }
 }
 
+use tokio::sync::RwLock;
+
 pub trait PacketInterceptor {
-    fn on_row_description(&mut self, msg: &RowDescription);
-    fn on_data_row(&mut self, msg: DataRow) -> Result<DataRow>;
+    fn on_row_description(&mut self, msg: &RowDescription) -> impl std::future::Future<Output = ()> + Send;
+    fn on_data_row(&mut self, msg: DataRow) -> impl std::future::Future<Output = Result<DataRow>> + Send;
 }
 
 pub struct Anonymizer {
-    config: Arc<AppConfig>,
+    config: Arc<RwLock<AppConfig>>,
     scanner: PiiScanner,
     // Map of column index to masking strategy
     target_cols: Vec<(usize, String)>,
 }
 
 impl Anonymizer {
-    pub fn new(config: Arc<AppConfig>) -> Self {
+    pub fn new(config: Arc<RwLock<AppConfig>>) -> Self {
         Self {
             config,
             scanner: PiiScanner::new(),
@@ -150,11 +152,12 @@ impl Anonymizer {
 }
 
 impl PacketInterceptor for Anonymizer {
-    fn on_row_description(&mut self, msg: &RowDescription) {
+    async fn on_row_description(&mut self, msg: &RowDescription) {
         self.target_cols.clear();
         
+        let config = self.config.read().await;
         for (i, field) in msg.fields.iter().enumerate() {
-            for rule in &self.config.rules {
+            for rule in &config.rules {
                 // Check if rule applies to this column
                 let table_match = rule.table.as_ref().is_none_or(|_t| {
                     // TODO: In a real app, we'd need to resolve table OID to name.
@@ -173,7 +176,7 @@ impl PacketInterceptor for Anonymizer {
         }
     }
 
-    fn on_data_row(&mut self, mut msg: DataRow) -> Result<DataRow> {
+    async fn on_data_row(&mut self, mut msg: DataRow) -> Result<DataRow> {
         for (i, val_opt) in msg.values.iter_mut().enumerate() {
             if let Some(val) = val_opt {
                 // 1. Check for explicit rule

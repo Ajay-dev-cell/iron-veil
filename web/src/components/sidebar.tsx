@@ -9,7 +9,8 @@ import {
   Activity,
   Settings,
   Database,
-  Lock
+  Lock,
+  ScanSearch
 } from "lucide-react"
 
 const routes = [
@@ -24,6 +25,12 @@ const routes = [
     icon: ShieldAlert,
     href: "/rules",
     color: "text-violet-500",
+  },
+  {
+    label: "PII Scanner",
+    icon: ScanSearch,
+    href: "/scan",
+    color: "text-emerald-500",
   },
   {
     label: "Live Inspector",

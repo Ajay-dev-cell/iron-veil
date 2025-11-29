@@ -42,9 +42,9 @@
     - [x] Initialize Next.js project with Tailwind & TypeScript
     - [x] Setup Shadcn/UI-style components and "Obsidian" Dark Theme
     - [x] Implement Sidebar Layout and Dashboard with Real-time Data
-- [ ] **3.3 PII Scanner UI**
-    - [ ] Create "Scan Database" feature
-    - [ ] Display PII report and allow "One-click Apply" for rules
+- [x] **3.3 PII Scanner UI**
+    - [x] Create "Scan Database" feature
+    - [x] Display PII report and allow "One-click Apply" for rules
 - [ ] **3.4 Live Query Inspector**
     - [ ] Build "Network Tab" for DB queries
     - [ ] Show diff view (Original vs. Masked Data)

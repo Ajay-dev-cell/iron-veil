@@ -73,8 +73,8 @@ async fn main() -> Result<()> {
 
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", args.port)).await?;
 
-    // Wrap config in Arc to share across tasks (though we clone it for now as it's small)
-    let config = std::sync::Arc::new(config);
+    // Use the config from state which is already wrapped in Arc<RwLock>
+    let config = state.config.clone();
 
     loop {
         let (client_socket, client_addr) = listener.accept().await?;
@@ -97,7 +97,7 @@ async fn main() -> Result<()> {
     }
 }
 
-async fn process_connection(client_socket: tokio::net::TcpStream, upstream_host: String, upstream_port: u16, config: std::sync::Arc<AppConfig>) -> Result<()> {
+async fn process_connection(client_socket: tokio::net::TcpStream, upstream_host: String, upstream_port: u16, config: std::sync::Arc<tokio::sync::RwLock<AppConfig>>) -> Result<()> {
     let upstream_socket = tokio::net::TcpStream::connect(format!("{}:{}", upstream_host, upstream_port)).await?;
     
     let mut client_framed = Framed::new(client_socket, PostgresCodec::new());
@@ -132,11 +132,11 @@ async fn process_connection(client_socket: tokio::net::TcpStream, upstream_host:
                     Some(Ok(msg)) => {
                         let msg_to_send = match msg {
                             PgMessage::RowDescription(ref rd) => {
-                                interceptor.on_row_description(rd);
+                                interceptor.on_row_description(rd).await;
                                 PgMessage::RowDescription(rd.clone())
                             }
                             PgMessage::DataRow(dr) => {
-                                let new_dr = interceptor.on_data_row(dr)?;
+                                let new_dr = interceptor.on_data_row(dr).await?;
                                 PgMessage::DataRow(new_dr)
                             }
                             _ => msg,
