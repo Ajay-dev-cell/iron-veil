@@ -19,6 +19,12 @@ use crate::config::AppConfig;
 use crate::state::{AppState, LogEntry};
 use chrono::Utc;
 use std::sync::atomic::Ordering;
+use tokio_rustls::TlsAcceptor;
+use tokio_rustls::rustls::{ServerConfig, pki_types::CertificateDer, pki_types::PrivateKeyDer};
+use std::sync::Arc;
+use std::fs::File;
+use std::io::BufReader;
+use tokio::io::AsyncReadExt;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -59,6 +65,25 @@ async fn main() -> Result<()> {
     let config = AppConfig::load(&args.config)?;
     info!("Loaded {} masking rules from {}", config.rules.len(), args.config);
 
+    // Load TLS config if enabled
+    let tls_acceptor = if let Some(tls_config) = &config.tls {
+        if tls_config.enabled {
+            info!("TLS enabled. Loading certs from {}", tls_config.cert_path);
+            let certs = load_certs(&tls_config.cert_path)?;
+            let key = load_keys(&tls_config.key_path)?;
+            let config = ServerConfig::builder()
+                .with_no_client_auth()
+                .with_single_cert(certs, key)?;
+            Some(TlsAcceptor::from(Arc::new(config)))
+        } else {
+            info!("TLS disabled in config.");
+            None
+        }
+    } else {
+        info!("TLS not configured.");
+        None
+    };
+
     // Initialize shared state
     let state = AppState::new(config.clone());
 
@@ -81,10 +106,11 @@ async fn main() -> Result<()> {
         let upstream_host = args.upstream_host.clone();
         let upstream_port = args.upstream_port;
         let state = state.clone();
+        let tls_acceptor = tls_acceptor.clone();
 
         tokio::spawn(async move {
             state.active_connections.fetch_add(1, Ordering::Relaxed);
-            let result = process_connection(client_socket, upstream_host, upstream_port, state.clone()).await;
+            let result = process_connection(client_socket, upstream_host, upstream_port, state.clone(), tls_acceptor).await;
             state.active_connections.fetch_sub(1, Ordering::Relaxed);
 
             if let Err(e) = result {
@@ -94,7 +120,43 @@ async fn main() -> Result<()> {
     }
 }
 
-async fn process_connection(client_socket: tokio::net::TcpStream, upstream_host: String, upstream_port: u16, state: AppState) -> Result<()> {
+async fn process_connection(
+    mut client_socket: tokio::net::TcpStream,
+    upstream_host: String,
+    upstream_port: u16,
+    state: AppState,
+    tls_acceptor: Option<TlsAcceptor>,
+) -> Result<()> {
+    let mut buffer = [0u8; 8];
+    let n = client_socket.peek(&mut buffer).await?;
+    if n >= 8 {
+        let len = u32::from_be_bytes(buffer[0..4].try_into().unwrap());
+        let code = u32::from_be_bytes(buffer[4..8].try_into().unwrap());
+        
+        if len == 8 && code == 80877103 {
+            // It is an SSLRequest
+            let mut trash = [0u8; 8];
+            client_socket.read_exact(&mut trash).await?;
+            
+            if let Some(acceptor) = tls_acceptor {
+                info!("Received SSLRequest, accepting...");
+                client_socket.write_all(b"S").await?;
+                
+                let tls_stream = acceptor.accept(client_socket).await?;
+                return handle_protocol(tls_stream, upstream_host, upstream_port, state).await;
+            } else {
+                info!("Received SSLRequest, denying (TLS not configured)...");
+                client_socket.write_all(b"N").await?;
+            }
+        }
+    }
+    
+    handle_protocol(client_socket, upstream_host, upstream_port, state).await
+}
+
+async fn handle_protocol<S>(client_socket: S, upstream_host: String, upstream_port: u16, state: AppState) -> Result<()> 
+where S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static
+{
     let upstream_socket = tokio::net::TcpStream::connect(format!("{}:{}", upstream_host, upstream_port)).await?;
     
     let mut client_framed = Framed::new(client_socket, PostgresCodec::new());
@@ -172,4 +234,20 @@ async fn process_connection(client_socket: tokio::net::TcpStream, upstream_host:
             }
         }
     }
+}
+
+fn load_certs(path: &str) -> Result<Vec<CertificateDer<'static>>> {
+    let certfile = File::open(path)?;
+    let mut reader = BufReader::new(certfile);
+    let certs = rustls_pemfile::certs(&mut reader)
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(certs)
+}
+
+fn load_keys(path: &str) -> Result<PrivateKeyDer<'static>> {
+    let keyfile = File::open(path)?;
+    let mut reader = BufReader::new(keyfile);
+    let key = rustls_pemfile::private_key(&mut reader)?
+        .ok_or_else(|| anyhow::anyhow!("No private key found"))?;
+    Ok(key)
 }

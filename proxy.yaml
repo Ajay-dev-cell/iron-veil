@@ -1,3 +1,8 @@
+tls:
+  enabled: false
+  cert_path: "certs/server.crt"
+  key_path: "certs/server.key"
+
 rules:
   - table: "users"
     column: "email"

@@ -7,6 +7,15 @@ pub struct AppConfig {
     #[serde(default = "default_masking_enabled")]
     pub masking_enabled: bool,
     pub rules: Vec<MaskingRule>,
+    #[serde(default)]
+    pub tls: Option<TlsConfig>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct TlsConfig {
+    pub enabled: bool,
+    pub cert_path: String,
+    pub key_path: String,
 }
 
 fn default_masking_enabled() -> bool {
