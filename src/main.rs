@@ -39,7 +39,7 @@ struct Args {
     config: String,
 
     /// Management API port
-    #[arg(long, default_value_t = 3000)]
+    #[arg(long, default_value_t = 3001)]
     api_port: u16,
 }
 
