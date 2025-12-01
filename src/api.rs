@@ -128,3 +128,152 @@ async fn get_logs(State(state): State<AppState>) -> Json<Value> {
         "logs": *logs
     }))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::AppConfig;
+
+    #[tokio::test]
+    async fn test_health_check() {
+        let response = health_check().await;
+        let json = response.0;
+        
+        assert_eq!(json["status"], "ok");
+        assert_eq!(json["service"], "ironveil");
+        assert!(json["version"].is_string());
+    }
+
+    #[tokio::test]
+    async fn test_get_config() {
+        let config = AppConfig {
+            masking_enabled: true,
+            rules: vec![
+                MaskingRule {
+                    table: Some("users".to_string()),
+                    column: "email".to_string(),
+                    strategy: "email".to_string(),
+                }
+            ],
+            tls: None,
+            upstream_tls: false,
+        };
+        let state = AppState::new(config);
+        
+        let response = get_config(State(state)).await;
+        let json = response.0;
+        
+        assert_eq!(json["masking_enabled"], true);
+        assert_eq!(json["rules_count"], 1);
+    }
+
+    #[tokio::test]
+    async fn test_update_config() {
+        let config = AppConfig {
+            masking_enabled: true,
+            rules: vec![],
+            tls: None,
+            upstream_tls: false,
+        };
+        let state = AppState::new(config);
+        
+        let payload = json!({ "masking_enabled": false });
+        let response = update_config(State(state.clone()), Json(payload)).await;
+        let json = response.0;
+        
+        assert_eq!(json["status"], "success");
+        assert_eq!(json["masking_enabled"], false);
+        
+        // Verify state was actually updated
+        let config = state.config.read().await;
+        assert!(!config.masking_enabled);
+    }
+
+    #[tokio::test]
+    async fn test_add_rule() {
+        let config = AppConfig {
+            masking_enabled: true,
+            rules: vec![],
+            tls: None,
+            upstream_tls: false,
+        };
+        let state = AppState::new(config);
+        
+        let new_rule = MaskingRule {
+            table: Some("users".to_string()),
+            column: "phone".to_string(),
+            strategy: "phone".to_string(),
+        };
+        
+        let response = add_rule(State(state.clone()), Json(new_rule)).await;
+        let json = response.0;
+        
+        assert_eq!(json["status"], "success");
+        assert_eq!(json["rules_count"], 1);
+        
+        // Verify rule was added
+        let config = state.config.read().await;
+        assert_eq!(config.rules.len(), 1);
+        assert_eq!(config.rules[0].column, "phone");
+    }
+
+    #[tokio::test]
+    async fn test_get_rules() {
+        let config = AppConfig {
+            masking_enabled: true,
+            rules: vec![
+                MaskingRule {
+                    table: None,
+                    column: "email".to_string(),
+                    strategy: "email".to_string(),
+                }
+            ],
+            tls: None,
+            upstream_tls: false,
+        };
+        let state = AppState::new(config);
+        
+        let response = get_rules(State(state)).await;
+        let json = response.0;
+        
+        assert!(json["rules"].is_array());
+        assert_eq!(json["rules"].as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_get_connections() {
+        let config = AppConfig {
+            masking_enabled: true,
+            rules: vec![],
+            tls: None,
+            upstream_tls: false,
+        };
+        let state = AppState::new(config);
+        
+        // Simulate some connections
+        state.active_connections.fetch_add(3, Ordering::Relaxed);
+        
+        let response = get_connections(State(state)).await;
+        let json = response.0;
+        
+        assert_eq!(json["active_connections"], 3);
+    }
+
+    #[tokio::test]
+    async fn test_scan_database_returns_findings() {
+        let response = scan_database().await;
+        let json = response.0;
+        
+        assert_eq!(json["status"], "completed");
+        assert!(json["findings"].is_array());
+        
+        let findings = json["findings"].as_array().unwrap();
+        assert!(!findings.is_empty());
+        
+        // Check structure of first finding
+        assert!(findings[0]["table"].is_string());
+        assert!(findings[0]["column"].is_string());
+        assert!(findings[0]["type"].is_string());
+        assert!(findings[0]["confidence"].is_number());
+    }
+}
