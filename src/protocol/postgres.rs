@@ -386,11 +386,10 @@ mod tests {
 
         let result = codec.decode(&mut buf).unwrap().unwrap();
 
-        if let PgMessage::Regular(msg) = result {
-            assert_eq!(msg.message_type, b'Q');
-            assert_eq!(msg.payload, BytesMut::from(&query[..]));
+        if let PgMessage::Query(msg) = result {
+            assert_eq!(msg.query, "SELECT 1");
         } else {
-            panic!("Expected Regular message");
+            panic!("Expected Query message");
         }
     }
 
@@ -459,6 +458,121 @@ mod tests {
             assert_eq!(msg.values[0].as_ref().unwrap(), &BytesMut::from(&val[..]));
         } else {
             panic!("Expected DataRow");
+        }
+    }
+
+    #[test]
+    fn test_decode_ssl_request() {
+        let mut codec = PostgresCodec::new();
+        let mut buf = BytesMut::new();
+
+        // SSLRequest: Length (8) + Code (80877103)
+        buf.put_u32(8);
+        buf.put_u32(80877103);
+
+        let result = codec.decode(&mut buf).unwrap().unwrap();
+
+        assert!(matches!(result, PgMessage::SSLRequest));
+        assert!(codec.is_startup, "Should still be in startup mode after SSLRequest");
+    }
+
+    #[test]
+    fn test_decode_parse_message() {
+        let mut codec = PostgresCodec::new();
+        codec.is_startup = false;
+        let mut buf = BytesMut::new();
+
+        // 'P' (Parse)
+        let stmt = b"stmt1\0";
+        let query = b"SELECT $1\0";
+        let num_params = 1u16;
+        let param_type = 23u32; // INT4
+
+        let payload_len = stmt.len() + query.len() + 2 + 4;
+        let total_len = 4 + payload_len;
+
+        buf.put_u8(b'P');
+        buf.put_u32(total_len as u32);
+        buf.put_slice(stmt);
+        buf.put_slice(query);
+        buf.put_u16(num_params);
+        buf.put_u32(param_type);
+
+        let result = codec.decode(&mut buf).unwrap().unwrap();
+
+        if let PgMessage::Parse(msg) = result {
+            assert_eq!(msg.statement, "stmt1");
+            assert_eq!(msg.query, "SELECT $1");
+            assert_eq!(msg.param_types.len(), 1);
+            assert_eq!(msg.param_types[0], 23);
+        } else {
+            panic!("Expected Parse message");
+        }
+    }
+
+    #[test]
+    fn test_decode_incomplete_message() {
+        let mut codec = PostgresCodec::new();
+        codec.is_startup = false;
+        let mut buf = BytesMut::new();
+
+        // Only 3 bytes, not enough for length
+        buf.put_u8(b'Q');
+        buf.put_u8(0);
+        buf.put_u8(0);
+
+        let result = codec.decode(&mut buf).unwrap();
+        assert!(result.is_none(), "Should return None for incomplete message");
+    }
+
+    #[test]
+    fn test_decode_data_row_with_null() {
+        let mut codec = PostgresCodec::new();
+        codec.is_startup = false;
+        let mut buf = BytesMut::new();
+
+        // DataRow with 2 cols: NULL and "data"
+        let val = b"data";
+        let col1_len = 4; // -1 for NULL
+        let col2_len = 4 + val.len();
+        let total_len = 4 + 2 + col1_len + col2_len;
+
+        buf.put_u8(b'D');
+        buf.put_u32(total_len as u32);
+        buf.put_u16(2); // 2 cols
+
+        buf.put_i32(-1); // NULL
+        buf.put_i32(val.len() as i32);
+        buf.put_slice(val);
+
+        let result = codec.decode(&mut buf).unwrap().unwrap();
+
+        if let PgMessage::DataRow(msg) = result {
+            assert_eq!(msg.values.len(), 2);
+            assert!(msg.values[0].is_none(), "First value should be NULL");
+            assert_eq!(msg.values[1].as_ref().unwrap(), &BytesMut::from(&val[..]));
+        } else {
+            panic!("Expected DataRow");
+        }
+    }
+
+    #[test]
+    fn test_encode_decode_roundtrip() {
+        let mut codec = PostgresCodec::new();
+        codec.is_startup = false;
+        let mut buf = BytesMut::new();
+
+        let original_query = QueryMessage {
+            query: "SELECT * FROM users".to_string(),
+        };
+
+        codec.encode(PgMessage::Query(original_query.clone()), &mut buf).unwrap();
+        let decoded = codec.decode(&mut buf).unwrap().unwrap();
+
+        if let PgMessage::Query(msg) = decoded {
+            assert_eq!(msg.query, original_query.query);
+        } else {
+            panic!("Expected Query message");
         }
     }
 }
