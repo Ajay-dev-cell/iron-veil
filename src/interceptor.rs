@@ -327,12 +327,19 @@ mod tests {
     use super::*;
     use crate::config::{AppConfig, MaskingRule};
     use crate::protocol::postgres::{FieldDescription, RowDescription};
+    use crate::state::AppState;
     use bytes::BytesMut;
 
-    #[test]
-    fn test_heuristic_detection() {
-        let config = Arc::new(AppConfig { rules: vec![] });
-        let mut anonymizer = Anonymizer::new(config);
+    #[tokio::test]
+    async fn test_heuristic_detection() {
+        let config = AppConfig { 
+            masking_enabled: true,
+            rules: vec![],
+            tls: None,
+            upstream_tls: false,
+        };
+        let state = AppState::new(config);
+        let mut anonymizer = Anonymizer::new(state, 1);
 
         // Create a DataRow with an email
         let email = "test@example.com";
@@ -345,7 +352,7 @@ mod tests {
         };
 
         // Process the row
-        row = anonymizer.on_data_row(row).unwrap();
+        row = anonymizer.on_data_row(row).await.unwrap();
 
         // Check results
         let val0 = std::str::from_utf8(row.values[0].as_ref().unwrap()).unwrap();
@@ -356,18 +363,22 @@ mod tests {
         assert_eq!(val1, other, "Non-PII data should be unchanged");
     }
     
-    #[test]
-    fn test_explicit_rule_overrides_heuristic() {
-         let config = Arc::new(AppConfig { 
+    #[tokio::test]
+    async fn test_explicit_rule_overrides_heuristic() {
+         let config = AppConfig { 
+             masking_enabled: true,
              rules: vec![
                  MaskingRule {
                      table: None,
                      column: "email_col".to_string(),
                      strategy: "address".to_string(), // Intentionally wrong strategy to prove override
                  }
-             ] 
-         });
-        let mut anonymizer = Anonymizer::new(config);
+             ],
+             tls: None,
+             upstream_tls: false,
+         };
+        let state = AppState::new(config);
+        let mut anonymizer = Anonymizer::new(state, 1);
         
         let desc = RowDescription {
             fields: vec![
@@ -383,7 +394,7 @@ mod tests {
             ]
         };
         
-        anonymizer.on_row_description(&desc);
+        anonymizer.on_row_description(&desc).await;
 
         let email = "test@example.com";
         let mut row = DataRow {
@@ -392,17 +403,23 @@ mod tests {
             ],
         };
 
-        row = anonymizer.on_data_row(row).unwrap();
+        row = anonymizer.on_data_row(row).await.unwrap();
         let val0 = std::str::from_utf8(row.values[0].as_ref().unwrap()).unwrap();
         
         // Should look like a city, not an email
         assert!(!val0.contains("@"), "Should be masked as address, not email");
     }
 
-    #[test]
-    fn test_json_masking() {
-        let config = Arc::new(AppConfig { rules: vec![] });
-        let mut anonymizer = Anonymizer::new(config);
+    #[tokio::test]
+    async fn test_json_masking() {
+        let config = AppConfig { 
+            masking_enabled: true,
+            rules: vec![],
+            tls: None,
+            upstream_tls: false,
+        };
+        let state = AppState::new(config);
+        let mut anonymizer = Anonymizer::new(state, 1);
 
         let json_data = r#"
         {
@@ -423,7 +440,7 @@ mod tests {
             ],
         };
 
-        row = anonymizer.on_data_row(row).unwrap();
+        row = anonymizer.on_data_row(row).await.unwrap();
         let val = std::str::from_utf8(row.values[0].as_ref().unwrap()).unwrap();
         
         // Parse result to verify
@@ -445,10 +462,16 @@ mod tests {
         assert_eq!(tag_normal, "not-pii");
     }
 
-    #[test]
-    fn test_array_masking() {
-        let config = Arc::new(AppConfig { rules: vec![] });
-        let mut anonymizer = Anonymizer::new(config);
+    #[tokio::test]
+    async fn test_array_masking() {
+        let config = AppConfig { 
+            masking_enabled: true,
+            rules: vec![],
+            tls: None,
+            upstream_tls: false,
+        };
+        let state = AppState::new(config);
+        let mut anonymizer = Anonymizer::new(state, 1);
 
         // Postgres array format: {val1,val2}
         let array_data = r#"{"test@example.com","normal_val","1234-5678-9012-3456"}"#;
@@ -459,7 +482,7 @@ mod tests {
             ],
         };
 
-        row = anonymizer.on_data_row(row).unwrap();
+        row = anonymizer.on_data_row(row).await.unwrap();
         let val = std::str::from_utf8(row.values[0].as_ref().unwrap()).unwrap();
         
         // Should be masked
@@ -482,5 +505,82 @@ mod tests {
         assert_eq!(normal, "\"normal_val\""); // Should be unchanged and still quoted
         
         assert_ne!(cc, "\"1234-5678-9012-3456\"");
+    }
+
+    #[tokio::test]
+    async fn test_deterministic_masking() {
+        let config = AppConfig { 
+            masking_enabled: true,
+            rules: vec![],
+            tls: None,
+            upstream_tls: false,
+        };
+        let state = AppState::new(config);
+        let mut anonymizer = Anonymizer::new(state, 1);
+
+        let email = "test@example.com";
+        
+        // Process same email twice
+        let mut row1 = DataRow {
+            values: vec![Some(BytesMut::from(email.as_bytes()))],
+        };
+        let mut row2 = DataRow {
+            values: vec![Some(BytesMut::from(email.as_bytes()))],
+        };
+
+        row1 = anonymizer.on_data_row(row1).await.unwrap();
+        row2 = anonymizer.on_data_row(row2).await.unwrap();
+
+        let val1 = std::str::from_utf8(row1.values[0].as_ref().unwrap()).unwrap();
+        let val2 = std::str::from_utf8(row2.values[0].as_ref().unwrap()).unwrap();
+
+        // Same input should produce same output (deterministic)
+        assert_eq!(val1, val2, "Same input should produce same masked output");
+        assert_ne!(val1, email, "Output should be different from input");
+    }
+
+    #[tokio::test]
+    async fn test_masking_can_be_disabled() {
+        let config = AppConfig { 
+            masking_enabled: false, // Disabled
+            rules: vec![],
+            tls: None,
+            upstream_tls: false,
+        };
+        let state = AppState::new(config);
+        let mut anonymizer = Anonymizer::new(state, 1);
+
+        let email = "test@example.com";
+        let mut row = DataRow {
+            values: vec![Some(BytesMut::from(email.as_bytes()))],
+        };
+
+        row = anonymizer.on_data_row(row).await.unwrap();
+        let val = std::str::from_utf8(row.values[0].as_ref().unwrap()).unwrap();
+
+        // Should NOT be masked when disabled
+        assert_eq!(val, email, "Data should not be masked when masking is disabled");
+    }
+
+    #[tokio::test]
+    async fn test_null_values_handled() {
+        let config = AppConfig { 
+            masking_enabled: true,
+            rules: vec![],
+            tls: None,
+            upstream_tls: false,
+        };
+        let state = AppState::new(config);
+        let mut anonymizer = Anonymizer::new(state, 1);
+
+        let mut row = DataRow {
+            values: vec![None, Some(BytesMut::from("data".as_bytes())), None],
+        };
+
+        row = anonymizer.on_data_row(row).await.unwrap();
+
+        assert!(row.values[0].is_none(), "NULL should remain NULL");
+        assert!(row.values[1].is_some(), "Non-NULL should remain Some");
+        assert!(row.values[2].is_none(), "NULL should remain NULL");
     }
 }
