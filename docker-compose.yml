@@ -20,9 +20,16 @@ services:
       POSTGRES_PASSWORD: password
       POSTGRES_DB: postgres
     ports:
-      - "5432:5432" # Exposed for direct access/seeding if needed
+      - "5432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
+      - ./certs:/etc/postgresql/certs:ro
+    command: >
+      postgres 
+      -c ssl=on 
+      -c ssl_cert_file=/etc/postgresql/certs/server.crt 
+      -c ssl_key_file=/etc/postgresql/certs/server.key
+
 
 volumes:
   pg_data:
