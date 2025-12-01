@@ -25,6 +25,12 @@ use std::sync::Arc;
 use std::fs::File;
 use std::io::BufReader;
 use tokio::io::AsyncReadExt;
+use tokio_rustls::rustls::ClientConfig;
+use rustls_platform_verifier::Verifier;
+use tokio_rustls::TlsConnector;
+use tokio_rustls::rustls::pki_types::ServerName;
+use bytes::BufMut;
+use tokio_rustls::rustls::crypto::aws_lc_rs::default_provider;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -154,11 +160,74 @@ async fn process_connection(
     handle_protocol(client_socket, upstream_host, upstream_port, state).await
 }
 
+/// Creates a TLS ClientConfig that uses the OS native certificate verifier.
+pub fn create_upstream_tls_config() -> ClientConfig {
+    // Initialize the platform-specific verifier
+    let provider = Arc::new(default_provider());
+    let verifier = Arc::new(Verifier::new(provider).expect("Failed to create platform verifier"));
+
+    ClientConfig::builder()
+        // .dangerous() is required because we are overriding the default 
+        // WebPki verifier with a custom one (the platform verifier).
+        .dangerous()
+        .with_custom_certificate_verifier(verifier)
+        .with_no_client_auth()
+}
+
 async fn handle_protocol<S>(client_socket: S, upstream_host: String, upstream_port: u16, state: AppState) -> Result<()> 
 where S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static
 {
-    let upstream_socket = tokio::net::TcpStream::connect(format!("{}:{}", upstream_host, upstream_port)).await?;
+    let mut upstream_socket = tokio::net::TcpStream::connect(format!("{}:{}", upstream_host, upstream_port)).await?;
     
+    // Check if upstream TLS is enabled
+    let upstream_tls_enabled = {
+        let config = state.config.read().await;
+        config.upstream_tls
+    };
+
+    if upstream_tls_enabled {
+        info!("Upstream TLS enabled. Attempting handshake with {}:{}", upstream_host, upstream_port);
+        
+        // 1. Send SSLRequest to upstream
+        let mut ssl_request = bytes::BytesMut::with_capacity(8);
+        ssl_request.put_u32(8); // Length
+        ssl_request.put_u32(80877103); // SSLRequest code
+        upstream_socket.write_all(&ssl_request).await?;
+
+        // 2. Read response (1 byte)
+        let mut response = [0u8; 1];
+        upstream_socket.read_exact(&mut response).await?;
+
+        if response[0] == b'S' {
+            info!("Upstream accepted SSLRequest. Upgrading connection...");
+            
+            // 3. Upgrade to TLS
+            let client_config = Arc::new(create_upstream_tls_config());
+            let connector = TlsConnector::from(client_config);
+            
+            let domain = ServerName::try_from(upstream_host.as_str())
+                .map_err(|_| anyhow::anyhow!("Invalid DNS name for upstream host"))?
+                .to_owned();
+
+            let upstream_tls_stream = connector.connect(domain, upstream_socket).await?;
+            
+            // 4. Continue with TLS stream
+            return handle_protocol_inner(client_socket, upstream_tls_stream, state).await;
+        } else {
+            tracing::warn!("Upstream denied SSLRequest. Falling back to cleartext (or aborting if strict).");
+            // For now, we fall back to cleartext as per standard behavior, but you might want to enforce it.
+        }
+    }
+
+    // Cleartext connection
+    handle_protocol_inner(client_socket, upstream_socket, state).await
+}
+
+async fn handle_protocol_inner<S, U>(client_socket: S, upstream_socket: U, state: AppState) -> Result<()> 
+where 
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+    U: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static
+{
     let mut client_framed = Framed::new(client_socket, PostgresCodec::new());
     let mut upstream_framed = Framed::new(upstream_socket, PostgresCodec::new_upstream());
     
