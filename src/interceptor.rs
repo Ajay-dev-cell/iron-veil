@@ -203,9 +203,9 @@ impl PacketInterceptor for Anonymizer {
                     .map(|(_, strategy)| strategy.as_str());
 
                 // Handle explicit JSON strategy
-                if let Some("json") = explicit_strategy {
-                     if let Ok(s) = std::str::from_utf8(val) {
-                        if let Ok(mut json_val) = serde_json::from_str::<serde_json::Value>(s) {
+                if let Some("json") = explicit_strategy
+                     && let Ok(s) = std::str::from_utf8(val)
+                     && let Ok(mut json_val) = serde_json::from_str::<serde_json::Value>(s) {
                             mask_json_recursively(&mut json_val, &self.scanner);
                             let new_json = serde_json::to_string(&json_val)?;
                             
@@ -221,8 +221,6 @@ impl PacketInterceptor for Anonymizer {
                                 }));
                             }
                             continue;
-                        }
-                     }
                 }
 
                 let strategy = if let Some(s) = explicit_strategy {
@@ -255,8 +253,8 @@ impl PacketInterceptor for Anonymizer {
                                 },
                                 Err(_) => {
                                     // Not valid JSON, maybe Postgres Array?
-                                    if trimmed.starts_with('{') && trimmed.ends_with('}') {
-                                        if let Some(masked_array) = mask_postgres_array(s, &self.scanner) {
+                                    if trimmed.starts_with('{') && trimmed.ends_with('}')
+                                        && let Some(masked_array) = mask_postgres_array(s, &self.scanner) {
                                             val.clear();
                                             val.extend_from_slice(masked_array.as_bytes());
                                             changed_any = true;
@@ -268,7 +266,6 @@ impl PacketInterceptor for Anonymizer {
                                             }));
                                             continue;
                                         }
-                                    }
                                 }
                             }
                         }
