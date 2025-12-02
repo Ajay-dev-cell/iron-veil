@@ -174,9 +174,15 @@ pub fn create_upstream_tls_config() -> ClientConfig {
         .with_no_client_auth()
 }
 
-async fn handle_protocol<S>(client_socket: S, upstream_host: String, upstream_port: u16, state: AppState) -> Result<()> 
+async fn handle_protocol<S>(
+    client_socket: S, 
+    upstream_host: String, 
+    upstream_port: u16, 
+    state: AppState,
+) -> Result<()> 
 where S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static
 {
+    // Create upstream connection
     let mut upstream_socket = tokio::net::TcpStream::connect(format!("{}:{}", upstream_host, upstream_port)).await?;
     
     // Check if upstream TLS is enabled
