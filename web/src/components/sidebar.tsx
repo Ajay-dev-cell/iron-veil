@@ -56,7 +56,7 @@ export function Sidebar() {
             <Lock className="w-8 h-8 text-indigo-500" />
           </div>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">
-            DB Proxy
+            IronVeil
           </h1>
         </Link>
         <div className="space-y-1">

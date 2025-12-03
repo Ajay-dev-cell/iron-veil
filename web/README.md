@@ -1,36 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# IronVeil Dashboard
+
+The web dashboard for IronVeil database proxy. Built with Next.js, Tailwind CSS, and Shadcn UI.
+
+## Features
+
+- **Dashboard**: Real-time system status, active connections, and rules overview
+- **Masking Rules**: View, add, edit, and delete data masking rules
+- **PII Scanner**: Scan database for potential PII columns with one-click rule creation
+- **Live Inspector**: Real-time query monitoring with original vs. masked data diff view
+- **Settings**: Global masking controls, system status, and configuration export
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js 18+
+- The IronVeil proxy running on port 3001 (API)
+
+### Development
 
 ```bash
+# Install dependencies
+npm install
+
+# Run development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to view the dashboard.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Production Build
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run build
+npm start
+```
 
-## Learn More
+## Tech Stack
 
-To learn more about Next.js, take a look at the following resources:
+- **Framework**: Next.js 14 (App Router)
+- **Styling**: Tailwind CSS
+- **Components**: Shadcn UI
+- **State Management**: TanStack Query (React Query)
+- **Icons**: Lucide React
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## API Endpoints
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The dashboard connects to the IronVeil Management API:
 
-## Deploy on Vercel
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Service health check |
+| `/rules` | GET | List all masking rules |
+| `/rules` | POST | Add a new masking rule |
+| `/config` | GET | Get current configuration |
+| `/config` | POST | Update configuration (e.g., toggle masking) |
+| `/connections` | GET | Get active connection count |
+| `/logs` | GET | Get recent query logs |
+| `/scan` | POST | Trigger PII scan |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Environment Variables
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```env
+# API base URL (defaults to http://localhost:3001)
+NEXT_PUBLIC_API_URL=http://localhost:3001
+```

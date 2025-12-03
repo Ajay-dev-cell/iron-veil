@@ -117,6 +117,10 @@ export default function SettingsPage() {
                 <span className="font-mono text-gray-200">3001</span>
               </div>
               <div className="flex justify-between text-sm">
+                <span className="text-gray-400">Supported Protocols</span>
+                <span className="font-mono text-gray-200">PostgreSQL, MySQL</span>
+              </div>
+              <div className="flex justify-between text-sm">
                 <span className="text-gray-400">Active Rules</span>
                 <span className="font-mono text-gray-200">{config?.rules_count}</span>
               </div>

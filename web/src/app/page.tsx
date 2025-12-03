@@ -82,7 +82,7 @@ export default function DashboardPage() {
           <CardContent>
             <div className="text-2xl font-bold text-white">Online</div>
             <p className="text-xs text-slate-400">
-              Postgres 17
+              PostgreSQL / MySQL
             </p>
           </CardContent>
         </Card>
