@@ -1,6 +1,6 @@
+use anyhow::Result;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use tokio_util::codec::{Decoder, Encoder};
-use anyhow::Result;
 
 #[derive(Debug, Clone)]
 pub enum PgMessage {
@@ -91,7 +91,7 @@ impl Decoder for PostgresCodec {
         if self.is_startup {
             // Startup packet: [Length (4 bytes)] [Protocol Version (4 bytes)] [Params...]
             // OR SSLRequest: [Length (4 bytes)] [1234 in high 16 bits] [5679 in low 16 bits]
-            
+
             if src.len() < length {
                 src.reserve(length - src.len());
                 return Ok(None);
@@ -114,7 +114,9 @@ impl Decoder for PostgresCodec {
             while data.has_remaining() {
                 // Read null-terminated strings
                 let key = read_cstring(&mut data)?;
-                if key.is_empty() { break; }
+                if key.is_empty() {
+                    break;
+                }
                 let value = read_cstring(&mut data)?;
                 parameters.push((key, value));
             }
@@ -124,17 +126,16 @@ impl Decoder for PostgresCodec {
                 protocol_version,
                 parameters,
             })))
-
         } else {
             // Regular packet: [Type (1 byte)] [Length (4 bytes)] [Payload...]
             // Note: The length includes the 4 bytes of the length field itself, but NOT the type byte.
-            
+
             if src.is_empty() {
                 return Ok(None);
             }
-            
+
             let message_type = src[0];
-            
+
             if src.len() < 5 {
                 return Ok(None);
             }
@@ -167,7 +168,7 @@ impl Decoder for PostgresCodec {
                         let type_len = data.get_i16();
                         let type_modifier = data.get_i32();
                         let format_code = data.get_i16();
-                        
+
                         fields.push(FieldDescription {
                             name,
                             table_oid,
@@ -207,14 +208,16 @@ impl Decoder for PostgresCodec {
                     for _ in 0..num_params {
                         param_types.push(data.get_u32());
                     }
-                    Ok(Some(PgMessage::Parse(ParseMessage { statement, query, param_types })))
-                }
-                _ => {
-                    Ok(Some(PgMessage::Regular(RegularMessage {
-                        message_type,
-                        payload: data,
+                    Ok(Some(PgMessage::Parse(ParseMessage {
+                        statement,
+                        query,
+                        param_types,
                     })))
                 }
+                _ => Ok(Some(PgMessage::Regular(RegularMessage {
+                    message_type,
+                    payload: data,
+                }))),
             }
         }
     }
@@ -251,17 +254,17 @@ impl Encoder<PgMessage> for PostgresCodec {
             }
             PgMessage::RowDescription(msg) => {
                 dst.put_u8(b'T');
-                
+
                 // Calculate length
                 let mut len = 4 + 2; // Length + NumFields
                 for field in &msg.fields {
                     len += field.name.len() + 1; // Name + Null
                     len += 4 + 2 + 4 + 2 + 4 + 2; // TableOID + ColIdx + TypeOID + TypeLen + TypeMod + Format
                 }
-                
+
                 dst.put_u32(len as u32);
                 dst.put_u16(msg.fields.len() as u16);
-                
+
                 for field in &msg.fields {
                     dst.put_slice(&field.name);
                     dst.put_u8(0);
@@ -275,7 +278,7 @@ impl Encoder<PgMessage> for PostgresCodec {
             }
             PgMessage::DataRow(msg) => {
                 dst.put_u8(b'D');
-                
+
                 // Calculate length
                 let mut len = 4 + 2; // Length + NumCols
                 for val in &msg.values {
@@ -284,10 +287,10 @@ impl Encoder<PgMessage> for PostgresCodec {
                         len += v.len();
                     }
                 }
-                
+
                 dst.put_u32(len as u32);
                 dst.put_u16(msg.values.len() as u16);
-                
+
                 for val in &msg.values {
                     if let Some(v) = val {
                         dst.put_i32(v.len() as i32);
@@ -306,7 +309,13 @@ impl Encoder<PgMessage> for PostgresCodec {
             }
             PgMessage::Parse(msg) => {
                 dst.put_u8(b'P');
-                let len = 4 + msg.statement.len() + 1 + msg.query.len() + 1 + 2 + (msg.param_types.len() * 4);
+                let len = 4
+                    + msg.statement.len()
+                    + 1
+                    + msg.query.len()
+                    + 1
+                    + 2
+                    + (msg.param_types.len() * 4);
                 dst.put_u32(len as u32);
                 dst.put_slice(&msg.statement);
                 dst.put_u8(0);
@@ -329,7 +338,9 @@ impl Encoder<PgMessage> for PostgresCodec {
 
 /// Read a null-terminated C-string from the buffer, returning a zero-copy Bytes slice.
 fn read_cstring_bytes(buf: &mut BytesMut) -> Result<Bytes> {
-    let pos = buf.iter().position(|&b| b == 0)
+    let pos = buf
+        .iter()
+        .position(|&b| b == 0)
         .ok_or_else(|| anyhow::anyhow!("Missing null terminator in C-string"))?;
     let bytes = buf.split_to(pos).freeze();
     buf.advance(1); // Skip the null terminator
@@ -356,7 +367,7 @@ mod tests {
         // Length (4) + Proto (4) + "user\0postgres\0\0"
         let params = b"user\0postgres\0\0";
         let len = 4 + 4 + params.len() as u32;
-        
+
         buf.put_u32(len);
         buf.put_u32(196608); // Proto ver 3.0
         buf.put_slice(params);
@@ -365,7 +376,10 @@ mod tests {
 
         if let PgMessage::Startup(msg) = result {
             assert_eq!(msg.protocol_version, 196608);
-            assert_eq!(msg.parameters[0], ("user".to_string(), "postgres".to_string()));
+            assert_eq!(
+                msg.parameters[0],
+                ("user".to_string(), "postgres".to_string())
+            );
         } else {
             panic!("Expected Startup message");
         }
@@ -377,7 +391,7 @@ mod tests {
         codec.is_startup = false; // Simulate handshake done
 
         let mut buf = BytesMut::new();
-        
+
         // 'Q' (Query) message
         // Type (1) + Length (4) + "SELECT 1\0"
         let query = b"SELECT 1\0";
@@ -405,7 +419,7 @@ mod tests {
         // 'T' (RowDescription)
         // Length (4) + NumFields (2) + Field1...
         // Field1: "email"\0 + TableOID(4) + ColIdx(2) + TypeOID(4) + TypeLen(2) + TypeMod(4) + Format(2)
-        
+
         let name = b"email\0";
         let field_len = name.len() + 4 + 2 + 4 + 2 + 4 + 2;
         let total_len = 4 + 2 + field_len;
@@ -416,11 +430,11 @@ mod tests {
 
         buf.put_slice(name);
         buf.put_u32(100); // Table OID
-        buf.put_u16(2);   // Col Index
-        buf.put_u32(25);  // Type OID (TEXT)
-        buf.put_i16(-1);  // Type Len
-        buf.put_i32(-1);  // Type Mod
-        buf.put_i16(0);   // Format (Text)
+        buf.put_u16(2); // Col Index
+        buf.put_u32(25); // Type OID (TEXT)
+        buf.put_i16(-1); // Type Len
+        buf.put_i32(-1); // Type Mod
+        buf.put_i16(0); // Format (Text)
 
         let result = codec.decode(&mut buf).unwrap().unwrap();
 
@@ -442,7 +456,7 @@ mod tests {
         // 'D' (DataRow)
         // Length (4) + NumCols (2) + Col1...
         // Col1: Len(4) + "hello"
-        
+
         let val = b"hello";
         let col_len = 4 + val.len();
         let total_len = 4 + 2 + col_len;
@@ -476,7 +490,10 @@ mod tests {
         let result = codec.decode(&mut buf).unwrap().unwrap();
 
         assert!(matches!(result, PgMessage::SSLRequest));
-        assert!(codec.is_startup, "Should still be in startup mode after SSLRequest");
+        assert!(
+            codec.is_startup,
+            "Should still be in startup mode after SSLRequest"
+        );
     }
 
     #[test]
@@ -525,7 +542,10 @@ mod tests {
         buf.put_u8(0);
 
         let result = codec.decode(&mut buf).unwrap();
-        assert!(result.is_none(), "Should return None for incomplete message");
+        assert!(
+            result.is_none(),
+            "Should return None for incomplete message"
+        );
     }
 
     #[test]
@@ -569,7 +589,9 @@ mod tests {
             query: Bytes::from_static(b"SELECT * FROM users"),
         };
 
-        codec.encode(PgMessage::Query(original_query.clone()), &mut buf).unwrap();
+        codec
+            .encode(PgMessage::Query(original_query.clone()), &mut buf)
+            .unwrap();
         let decoded = codec.decode(&mut buf).unwrap().unwrap();
 
         if let PgMessage::Query(msg) = decoded {
@@ -596,12 +618,12 @@ mod tests {
         buf.put_u32(total_len as u32);
         buf.put_u16(1);
         buf.put_slice(name_with_null);
-        buf.put_u32(0);    // table_oid
-        buf.put_u16(0);    // column_index
-        buf.put_u32(25);   // type_oid (TEXT)
-        buf.put_i16(-1);   // type_len
-        buf.put_i32(-1);   // type_modifier
-        buf.put_i16(0);    // format_code
+        buf.put_u32(0); // table_oid
+        buf.put_u16(0); // column_index
+        buf.put_u32(25); // type_oid (TEXT)
+        buf.put_i16(-1); // type_len
+        buf.put_i32(-1); // type_modifier
+        buf.put_i16(0); // format_code
 
         let result = codec.decode(&mut buf).unwrap().unwrap();
 

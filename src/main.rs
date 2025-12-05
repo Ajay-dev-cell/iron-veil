@@ -1,37 +1,37 @@
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
-use tracing::{info, info_span, Instrument};
+use tracing::{Instrument, info, info_span};
 
-mod protocol;
-mod interceptor;
-mod config;
-mod scanner;
 mod api;
+mod config;
+mod interceptor;
+mod protocol;
+mod scanner;
 mod state;
 mod telemetry;
 
-use futures::{SinkExt, StreamExt};
-use tokio::io::AsyncWriteExt;
-use tokio_util::codec::Framed;
-use crate::protocol::postgres::{PostgresCodec, PgMessage};
-use crate::protocol::mysql::{MySqlCodec, MySqlMessage};
-use crate::interceptor::{PacketInterceptor, Anonymizer, MySqlPacketInterceptor, MySqlAnonymizer};
 use crate::config::AppConfig;
+use crate::interceptor::{Anonymizer, MySqlAnonymizer, MySqlPacketInterceptor, PacketInterceptor};
+use crate::protocol::mysql::{MySqlCodec, MySqlMessage};
+use crate::protocol::postgres::{PgMessage, PostgresCodec};
 use crate::state::{AppState, LogEntry};
+use bytes::BufMut;
 use chrono::Utc;
-use std::sync::atomic::Ordering;
-use tokio_rustls::TlsAcceptor;
-use tokio_rustls::rustls::{ServerConfig, pki_types::CertificateDer, pki_types::PrivateKeyDer};
-use std::sync::Arc;
+use futures::{SinkExt, StreamExt};
+use rustls_platform_verifier::Verifier;
 use std::fs::File;
 use std::io::BufReader;
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use tokio::io::AsyncReadExt;
-use tokio_rustls::rustls::ClientConfig;
-use rustls_platform_verifier::Verifier;
+use tokio::io::AsyncWriteExt;
+use tokio_rustls::TlsAcceptor;
 use tokio_rustls::TlsConnector;
-use tokio_rustls::rustls::pki_types::ServerName;
-use bytes::BufMut;
+use tokio_rustls::rustls::ClientConfig;
 use tokio_rustls::rustls::crypto::aws_lc_rs::default_provider;
+use tokio_rustls::rustls::pki_types::ServerName;
+use tokio_rustls::rustls::{ServerConfig, pki_types::CertificateDer, pki_types::PrivateKeyDer};
+use tokio_util::codec::Framed;
 
 #[derive(Debug, Clone, Copy, ValueEnum, Default)]
 pub enum DbProtocol {
@@ -74,11 +74,15 @@ async fn main() -> Result<()> {
 
     // Load configuration
     let config = AppConfig::load(&args.config)?;
-    
+
     // Initialize telemetry (must be done before any tracing calls)
     let _telemetry_guard = telemetry::init_telemetry(config.telemetry.as_ref())?;
-    
-    info!("Loaded {} masking rules from {}", config.rules.len(), args.config);
+
+    info!(
+        "Loaded {} masking rules from {}",
+        config.rules.len(),
+        args.config
+    );
 
     // Load TLS config if enabled
     let tls_acceptor = if let Some(tls_config) = &config.tls {
@@ -110,7 +114,10 @@ async fn main() -> Result<()> {
     });
 
     info!("Starting DB Proxy on port {}", args.port);
-    info!("Forwarding to upstream at {}:{}", args.upstream_host, args.upstream_port);
+    info!(
+        "Forwarding to upstream at {}:{}",
+        args.upstream_host, args.upstream_port
+    );
     info!("Protocol: {:?}", args.protocol);
 
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", args.port)).await?;
@@ -133,19 +140,38 @@ async fn main() -> Result<()> {
                 upstream.port = %upstream_port,
                 protocol = ?protocol
             );
-            
+
             async {
                 state.active_connections.fetch_add(1, Ordering::Relaxed);
                 let result = match protocol {
-                    DbProtocol::Postgres => process_postgres_connection(client_socket, upstream_host, upstream_port, state.clone(), tls_acceptor).await,
-                    DbProtocol::Mysql => process_mysql_connection(client_socket, upstream_host, upstream_port, state.clone()).await,
+                    DbProtocol::Postgres => {
+                        process_postgres_connection(
+                            client_socket,
+                            upstream_host,
+                            upstream_port,
+                            state.clone(),
+                            tls_acceptor,
+                        )
+                        .await
+                    }
+                    DbProtocol::Mysql => {
+                        process_mysql_connection(
+                            client_socket,
+                            upstream_host,
+                            upstream_port,
+                            state.clone(),
+                        )
+                        .await
+                    }
                 };
                 state.active_connections.fetch_sub(1, Ordering::Relaxed);
 
                 if let Err(e) = result {
                     tracing::error!(error = %e, "Connection error");
                 }
-            }.instrument(span).await
+            }
+            .instrument(span)
+            .await
         });
     }
 }
@@ -166,25 +192,26 @@ async fn process_postgres_connection(
     if n >= 8 {
         let len = u32::from_be_bytes(buffer[0..4].try_into().unwrap());
         let code = u32::from_be_bytes(buffer[4..8].try_into().unwrap());
-        
+
         if len == 8 && code == 80877103 {
             // It is an SSLRequest
             let mut trash = [0u8; 8];
             client_socket.read_exact(&mut trash).await?;
-            
+
             if let Some(acceptor) = tls_acceptor {
                 info!("Received SSLRequest, accepting...");
                 client_socket.write_all(b"S").await?;
-                
+
                 let tls_stream = acceptor.accept(client_socket).await?;
-                return handle_postgres_protocol(tls_stream, upstream_host, upstream_port, state).await;
+                return handle_postgres_protocol(tls_stream, upstream_host, upstream_port, state)
+                    .await;
             } else {
                 info!("Received SSLRequest, denying (TLS not configured)...");
                 client_socket.write_all(b"N").await?;
             }
         }
     }
-    
+
     handle_postgres_protocol(client_socket, upstream_host, upstream_port, state).await
 }
 
@@ -195,7 +222,7 @@ pub fn create_upstream_tls_config() -> ClientConfig {
     let verifier = Arc::new(Verifier::new(provider).expect("Failed to create platform verifier"));
 
     ClientConfig::builder()
-        // .dangerous() is required because we are overriding the default 
+        // .dangerous() is required because we are overriding the default
         // WebPki verifier with a custom one (the platform verifier).
         .dangerous()
         .with_custom_certificate_verifier(verifier)
@@ -203,16 +230,18 @@ pub fn create_upstream_tls_config() -> ClientConfig {
 }
 
 async fn handle_postgres_protocol<S>(
-    client_socket: S, 
-    upstream_host: String, 
-    upstream_port: u16, 
+    client_socket: S,
+    upstream_host: String,
+    upstream_port: u16,
     state: AppState,
-) -> Result<()> 
-where S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static
+) -> Result<()>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
     // Create upstream connection
-    let mut upstream_socket = tokio::net::TcpStream::connect(format!("{}:{}", upstream_host, upstream_port)).await?;
-    
+    let mut upstream_socket =
+        tokio::net::TcpStream::connect(format!("{}:{}", upstream_host, upstream_port)).await?;
+
     // Check if upstream TLS is enabled
     let upstream_tls_enabled = {
         let config = state.config.read().await;
@@ -220,8 +249,11 @@ where S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static
     };
 
     if upstream_tls_enabled {
-        info!("Upstream TLS enabled. Attempting handshake with {}:{}", upstream_host, upstream_port);
-        
+        info!(
+            "Upstream TLS enabled. Attempting handshake with {}:{}",
+            upstream_host, upstream_port
+        );
+
         // 1. Send SSLRequest to upstream
         let mut ssl_request = bytes::BytesMut::with_capacity(8);
         ssl_request.put_u32(8); // Length
@@ -234,21 +266,23 @@ where S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static
 
         if response[0] == b'S' {
             info!("Upstream accepted SSLRequest. Upgrading connection...");
-            
+
             // 3. Upgrade to TLS
             let client_config = Arc::new(create_upstream_tls_config());
             let connector = TlsConnector::from(client_config);
-            
+
             let domain = ServerName::try_from(upstream_host.as_str())
                 .map_err(|_| anyhow::anyhow!("Invalid DNS name for upstream host"))?
                 .to_owned();
 
             let upstream_tls_stream = connector.connect(domain, upstream_socket).await?;
-            
+
             // 4. Continue with TLS stream
             return handle_postgres_protocol_inner(client_socket, upstream_tls_stream, state).await;
         } else {
-            tracing::warn!("Upstream denied SSLRequest. Falling back to cleartext (or aborting if strict).");
+            tracing::warn!(
+                "Upstream denied SSLRequest. Falling back to cleartext (or aborting if strict)."
+            );
             // For now, we fall back to cleartext as per standard behavior, but you might want to enforce it.
         }
     }
@@ -257,14 +291,18 @@ where S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static
     handle_postgres_protocol_inner(client_socket, upstream_socket, state).await
 }
 
-async fn handle_postgres_protocol_inner<S, U>(client_socket: S, upstream_socket: U, state: AppState) -> Result<()> 
-where 
+async fn handle_postgres_protocol_inner<S, U>(
+    client_socket: S,
+    upstream_socket: U,
+    state: AppState,
+) -> Result<()>
+where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
-    U: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static
+    U: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
     let mut client_framed = Framed::new(client_socket, PostgresCodec::new());
     let mut upstream_framed = Framed::new(upstream_socket, PostgresCodec::new_upstream());
-    
+
     let connection_id = rand::random::<u64>() as usize;
     let mut interceptor = Anonymizer::new(state.clone(), connection_id);
 
@@ -350,12 +388,17 @@ async fn process_mysql_connection(
     state: AppState,
 ) -> Result<()> {
     // Connect to upstream MySQL server
-    let upstream_socket = tokio::net::TcpStream::connect(format!("{}:{}", upstream_host, upstream_port)).await?;
-    
+    let upstream_socket =
+        tokio::net::TcpStream::connect(format!("{}:{}", upstream_host, upstream_port)).await?;
+
     handle_mysql_protocol(client_socket, upstream_socket, state).await
 }
 
-async fn handle_mysql_protocol<S, U>(client_socket: S, upstream_socket: U, state: AppState) -> Result<()>
+async fn handle_mysql_protocol<S, U>(
+    client_socket: S,
+    upstream_socket: U,
+    state: AppState,
+) -> Result<()>
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
     U: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
@@ -371,7 +414,9 @@ where
         Some(Ok(MySqlMessage::Handshake(h))) => {
             info!(server_version = %h.server_version, "Received MySQL handshake from upstream");
             // Forward the handshake to the client
-            client_framed.send(MySqlMessage::Handshake(h.clone())).await?;
+            client_framed
+                .send(MySqlMessage::Handshake(h.clone()))
+                .await?;
             h
         }
         Some(Ok(other)) => {
@@ -383,21 +428,33 @@ where
     };
 
     // Update codec capability flags
-    client_framed.codec_mut().set_capability_flags(handshake.capability_flags);
-    upstream_framed.codec_mut().set_capability_flags(handshake.capability_flags);
+    client_framed
+        .codec_mut()
+        .set_capability_flags(handshake.capability_flags);
+    upstream_framed
+        .codec_mut()
+        .set_capability_flags(handshake.capability_flags);
 
     // Phase 2: Forward client handshake response to upstream
     match client_framed.next().await {
         Some(Ok(MySqlMessage::HandshakeResponse(r))) => {
             info!(username = %r.username, database = ?r.database, "Received client handshake response");
             // Update capability flags based on what client actually supports
-            client_framed.codec_mut().set_capability_flags(r.capability_flags);
-            upstream_framed.codec_mut().set_capability_flags(r.capability_flags);
-            upstream_framed.send(MySqlMessage::HandshakeResponse(r)).await?;
+            client_framed
+                .codec_mut()
+                .set_capability_flags(r.capability_flags);
+            upstream_framed
+                .codec_mut()
+                .set_capability_flags(r.capability_flags);
+            upstream_framed
+                .send(MySqlMessage::HandshakeResponse(r))
+                .await?;
         }
         Some(Ok(other)) => {
             tracing::warn!("Expected handshake response, got {:?}", other);
-            return Err(anyhow::anyhow!("Protocol error: expected handshake response"));
+            return Err(anyhow::anyhow!(
+                "Protocol error: expected handshake response"
+            ));
         }
         Some(Err(e)) => return Err(e),
         None => return Ok(()),
@@ -429,21 +486,18 @@ where
             msg = client_framed.next() => {
                 match msg {
                     Some(Ok(msg)) => {
-                        match &msg {
-                            MySqlMessage::Query(q) => {
-                                let id = format!("{:x}", rand::random::<u128>());
-                                state.add_log(LogEntry {
-                                    id,
-                                    timestamp: Utc::now(),
-                                    connection_id,
-                                    event_type: "MySqlQuery".to_string(),
-                                    content: String::from_utf8_lossy(&q.query).to_string(),
-                                    details: None,
-                                }).await;
-                                // Reset interceptor for new result set
-                                interceptor.reset_columns();
-                            }
-                            _ => {}
+                        if let MySqlMessage::Query(q) = &msg {
+                            let id = format!("{:x}", rand::random::<u128>());
+                            state.add_log(LogEntry {
+                                id,
+                                timestamp: Utc::now(),
+                                connection_id,
+                                event_type: "MySqlQuery".to_string(),
+                                content: String::from_utf8_lossy(&q.query).to_string(),
+                                details: None,
+                            }).await;
+                            // Reset interceptor for new result set
+                            interceptor.reset_columns();
                         }
                         upstream_framed.send(msg).await?;
                     }
@@ -484,8 +538,7 @@ where
 fn load_certs(path: &str) -> Result<Vec<CertificateDer<'static>>> {
     let certfile = File::open(path)?;
     let mut reader = BufReader::new(certfile);
-    let certs = rustls_pemfile::certs(&mut reader)
-        .collect::<Result<Vec<_>, _>>()?;
+    let certs = rustls_pemfile::certs(&mut reader).collect::<Result<Vec<_>, _>>()?;
     Ok(certs)
 }
 

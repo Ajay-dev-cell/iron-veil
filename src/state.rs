@@ -1,9 +1,9 @@
+use crate::config::AppConfig;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::sync::{Arc, atomic::AtomicUsize};
 use tokio::sync::RwLock;
-use crate::config::AppConfig;
-use std::collections::VecDeque;
-use serde::{Serialize, Deserialize};
-use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntry {

@@ -5,16 +5,15 @@
 
 use crate::config::TelemetryConfig;
 use anyhow::Result;
-use opentelemetry::trace::TracerProvider;
 use opentelemetry::KeyValue;
+use opentelemetry::trace::TracerProvider;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{
-    runtime,
+    Resource, runtime,
     trace::{RandomIdGenerator, Sampler, TracerProvider as SdkTracerProvider},
-    Resource,
 };
 use tracing_opentelemetry::OpenTelemetryLayer;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 /// Initializes the telemetry subsystem with OpenTelemetry.
 ///

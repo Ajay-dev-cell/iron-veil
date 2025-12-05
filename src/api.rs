@@ -1,16 +1,15 @@
+use crate::config::MaskingRule;
+use crate::state::AppState;
 use axum::{
+    Json, Router,
     extract::State,
     routing::{get, post},
-    Router,
-    Json,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::net::SocketAddr;
-use tower_http::trace::TraceLayer;
-use tower_http::cors::CorsLayer;
-use crate::state::AppState;
-use crate::config::MaskingRule;
 use std::sync::atomic::Ordering;
+use tower_http::cors::CorsLayer;
+use tower_http::trace::TraceLayer;
 
 pub async fn start_api_server(port: u16, state: AppState) {
     // Define the routes
@@ -72,7 +71,7 @@ async fn scan_database() -> Json<Value> {
     // Mocked scan results for Phase 3.3
     // In a real implementation, this would query the upstream DB and sample data.
     tokio::time::sleep(std::time::Duration::from_secs(2)).await; // Simulate work
-    
+
     Json(json!({
         "status": "completed",
         "findings": [
@@ -138,7 +137,7 @@ mod tests {
     async fn test_health_check() {
         let response = health_check().await;
         let json = response.0;
-        
+
         assert_eq!(json["status"], "ok");
         assert_eq!(json["service"], "ironveil");
         assert!(json["version"].is_string());
@@ -148,22 +147,20 @@ mod tests {
     async fn test_get_config() {
         let config = AppConfig {
             masking_enabled: true,
-            rules: vec![
-                MaskingRule {
-                    table: Some("users".to_string()),
-                    column: "email".to_string(),
-                    strategy: "email".to_string(),
-                }
-            ],
+            rules: vec![MaskingRule {
+                table: Some("users".to_string()),
+                column: "email".to_string(),
+                strategy: "email".to_string(),
+            }],
             tls: None,
             upstream_tls: false,
             telemetry: None,
         };
         let state = AppState::new(config);
-        
+
         let response = get_config(State(state)).await;
         let json = response.0;
-        
+
         assert_eq!(json["masking_enabled"], true);
         assert_eq!(json["rules_count"], 1);
     }
@@ -178,14 +175,14 @@ mod tests {
             telemetry: None,
         };
         let state = AppState::new(config);
-        
+
         let payload = json!({ "masking_enabled": false });
         let response = update_config(State(state.clone()), Json(payload)).await;
         let json = response.0;
-        
+
         assert_eq!(json["status"], "success");
         assert_eq!(json["masking_enabled"], false);
-        
+
         // Verify state was actually updated
         let config = state.config.read().await;
         assert!(!config.masking_enabled);
@@ -201,19 +198,19 @@ mod tests {
             telemetry: None,
         };
         let state = AppState::new(config);
-        
+
         let new_rule = MaskingRule {
             table: Some("users".to_string()),
             column: "phone".to_string(),
             strategy: "phone".to_string(),
         };
-        
+
         let response = add_rule(State(state.clone()), Json(new_rule)).await;
         let json = response.0;
-        
+
         assert_eq!(json["status"], "success");
         assert_eq!(json["rules_count"], 1);
-        
+
         // Verify rule was added
         let config = state.config.read().await;
         assert_eq!(config.rules.len(), 1);
@@ -224,22 +221,20 @@ mod tests {
     async fn test_get_rules() {
         let config = AppConfig {
             masking_enabled: true,
-            rules: vec![
-                MaskingRule {
-                    table: None,
-                    column: "email".to_string(),
-                    strategy: "email".to_string(),
-                }
-            ],
+            rules: vec![MaskingRule {
+                table: None,
+                column: "email".to_string(),
+                strategy: "email".to_string(),
+            }],
             tls: None,
             upstream_tls: false,
             telemetry: None,
         };
         let state = AppState::new(config);
-        
+
         let response = get_rules(State(state)).await;
         let json = response.0;
-        
+
         assert!(json["rules"].is_array());
         assert_eq!(json["rules"].as_array().unwrap().len(), 1);
     }
@@ -254,13 +249,13 @@ mod tests {
             telemetry: None,
         };
         let state = AppState::new(config);
-        
+
         // Simulate some connections
         state.active_connections.fetch_add(3, Ordering::Relaxed);
-        
+
         let response = get_connections(State(state)).await;
         let json = response.0;
-        
+
         assert_eq!(json["active_connections"], 3);
     }
 
@@ -268,13 +263,13 @@ mod tests {
     async fn test_scan_database_returns_findings() {
         let response = scan_database().await;
         let json = response.0;
-        
+
         assert_eq!(json["status"], "completed");
         assert!(json["findings"].is_array());
-        
+
         let findings = json["findings"].as_array().unwrap();
         assert!(!findings.is_empty());
-        
+
         // Check structure of first finding
         assert!(findings[0]["table"].is_string());
         assert!(findings[0]["column"].is_string());

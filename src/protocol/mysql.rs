@@ -235,12 +235,14 @@ impl Decoder for MySqlCodec {
                     let first_byte = packet[0];
                     match first_byte {
                         0x00 => {
-                            let ok = parse_ok_packet(&mut packet, sequence_id, self.capability_flags)?;
+                            let ok =
+                                parse_ok_packet(&mut packet, sequence_id, self.capability_flags)?;
                             self.state = MySqlState::Command;
                             Ok(Some(MySqlMessage::Ok(ok)))
                         }
                         0xff => {
-                            let err = parse_err_packet(&mut packet, sequence_id, self.capability_flags)?;
+                            let err =
+                                parse_err_packet(&mut packet, sequence_id, self.capability_flags)?;
                             Ok(Some(MySqlMessage::Err(err)))
                         }
                         _ => {
@@ -274,7 +276,11 @@ impl Decoder for MySqlCodec {
                 }
 
                 // Check for result set header (column count) from server
-                if self.is_client_side && first_byte != 0x00 && first_byte != 0xff && first_byte != 0xfe {
+                if self.is_client_side
+                    && first_byte != 0x00
+                    && first_byte != 0xff
+                    && first_byte != 0xfe
+                {
                     // Could be column count (length-encoded int)
                     let (col_count, _) = read_lenenc_int(&packet)?;
                     if col_count > 0 && col_count < 1000 {
@@ -578,7 +584,11 @@ fn parse_ok_packet(buf: &mut BytesMut, sequence_id: u8, capability_flags: u32) -
     })
 }
 
-fn parse_err_packet(buf: &mut BytesMut, sequence_id: u8, capability_flags: u32) -> Result<ErrPacket> {
+fn parse_err_packet(
+    buf: &mut BytesMut,
+    sequence_id: u8,
+    capability_flags: u32,
+) -> Result<ErrPacket> {
     buf.advance(1); // header 0xff
     let error_code = buf.get_u16_le();
 
@@ -667,7 +677,10 @@ fn parse_result_row(buf: &mut BytesMut, sequence_id: u8, column_count: usize) ->
         }
     }
 
-    Ok(ResultRow { sequence_id, values })
+    Ok(ResultRow {
+        sequence_id,
+        values,
+    })
 }
 
 // ============================================================================

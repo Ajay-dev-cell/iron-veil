@@ -1,6 +1,6 @@
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use anyhow::Result;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct AppConfig {
@@ -76,7 +76,7 @@ rules:
     strategy: "phone"
 "#;
         let config: AppConfig = serde_yaml::from_str(yaml).unwrap();
-        
+
         assert!(config.masking_enabled);
         assert!(!config.upstream_tls);
         assert_eq!(config.rules.len(), 2);
@@ -92,7 +92,7 @@ rules:
 rules: []
 "#;
         let config: AppConfig = serde_yaml::from_str(yaml).unwrap();
-        
+
         assert!(config.masking_enabled); // Should default to true
         assert!(!config.upstream_tls); // Should default to false
         assert!(config.tls.is_none()); // Should default to None
@@ -110,10 +110,10 @@ tls:
 rules: []
 "#;
         let config: AppConfig = serde_yaml::from_str(yaml).unwrap();
-        
+
         assert!(config.upstream_tls);
         assert!(config.tls.is_some());
-        
+
         let tls = config.tls.unwrap();
         assert!(tls.enabled);
         assert_eq!(tls.cert_path, "certs/server.crt");
