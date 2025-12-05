@@ -41,6 +41,9 @@ jsonwebtoken = "9"
 metrics = "0.24"
 metrics-exporter-prometheus = "0.16"
 
+# File watching for hot reload
+notify = "7"
+
 [dev-dependencies]
 reqwest = { version = "0.12", features = ["json"] }
 tempfile = "3"

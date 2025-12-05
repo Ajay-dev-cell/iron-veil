@@ -166,12 +166,19 @@ health_check:
 
 **Files:** `tests/integration_test.rs`, `Cargo.toml` (dev-dependencies)
 
-### 14. Configuration Hot Reload
-- [ ] Watch `proxy.yaml` for changes
-- [ ] Reload rules without restart
-- [ ] Add API endpoint to trigger reload
+### 14. Configuration Hot Reload ✅
+- [x] Watch `proxy.yaml` for changes using `notify` crate
+- [x] Automatically reload rules when file changes (debounced)
+- [x] Add API endpoint to trigger manual reload (`POST /config/reload`)
+- [x] Graceful error handling if config file is invalid
 
-**Files:** `src/config.rs`, `src/main.rs`
+**Implementation:**
+- File watcher uses `notify` crate with 2-second poll interval
+- 1-second debounce to prevent rapid reloads
+- Manual reload via `POST /config/reload` (auth required)
+- Invalid configs are rejected without affecting running config
+
+**Files:** `src/main.rs`, `src/state.rs`, `src/api.rs`, `Cargo.toml`
 
 ### 15. Connection Pooling
 - [ ] Implement upstream connection pooling

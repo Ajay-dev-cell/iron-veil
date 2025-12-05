@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
+use notify::{Config as NotifyConfig, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
@@ -161,6 +162,81 @@ async fn run_health_check_task(
     }
 }
 
+/// Background task that watches the config file for changes and reloads
+async fn run_config_watcher(state: AppState, config_path: String) {
+    use std::path::Path;
+    use std::sync::mpsc::channel;
+    
+    let path = Path::new(&config_path);
+    let parent = path.parent().unwrap_or(Path::new("."));
+    
+    // Create a channel to receive events
+    let (tx, rx) = channel();
+    
+    // Create a watcher with debounce
+    let mut watcher: RecommendedWatcher = match Watcher::new(
+        move |res: Result<Event, notify::Error>| {
+            if let Ok(event) = res {
+                let _ = tx.send(event);
+            }
+        },
+        NotifyConfig::default().with_poll_interval(Duration::from_secs(2)),
+    ) {
+        Ok(w) => w,
+        Err(e) => {
+            warn!("Failed to create config file watcher: {}. Hot reload disabled.", e);
+            return;
+        }
+    };
+    
+    // Watch the config file's parent directory
+    if let Err(e) = watcher.watch(parent, RecursiveMode::NonRecursive) {
+        warn!("Failed to watch config directory: {}. Hot reload disabled.", e);
+        return;
+    }
+    
+    info!("Config file watcher started for {}", config_path);
+    
+    let filename = path.file_name().and_then(|f| f.to_str()).unwrap_or("proxy.yaml");
+    let mut last_reload = Instant::now();
+    let debounce_duration = Duration::from_secs(1);
+    
+    loop {
+        // Check for events with a timeout
+        match rx.recv_timeout(Duration::from_secs(5)) {
+            Ok(event) => {
+                // Check if this event is for our config file
+                let is_config_file = event.paths.iter().any(|p| {
+                    p.file_name()
+                        .and_then(|f| f.to_str())
+                        .map(|f| f == filename)
+                        .unwrap_or(false)
+                });
+                
+                if is_config_file && last_reload.elapsed() > debounce_duration {
+                    info!("Config file changed, reloading...");
+                    match state.reload_config().await {
+                        Ok(rules_count) => {
+                            info!("Configuration reloaded: {} rules", rules_count);
+                        }
+                        Err(e) => {
+                            warn!("Failed to reload configuration: {}", e);
+                        }
+                    }
+                    last_reload = Instant::now();
+                }
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                // No events, continue watching
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                warn!("Config watcher channel disconnected, stopping watcher");
+                break;
+            }
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
@@ -228,6 +304,13 @@ async fn main() -> Result<()> {
             run_health_check_task(health_state, health_host, health_port, health_config).await;
         });
     }
+    
+    // Start config file watcher for hot reload
+    let watch_state = state.clone();
+    let config_path = args.config.clone();
+    tokio::spawn(async move {
+        run_config_watcher(watch_state, config_path).await;
+    });
 
     info!("Starting DB Proxy on port {}", args.port);
     info!(

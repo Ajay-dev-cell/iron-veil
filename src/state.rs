@@ -123,4 +123,25 @@ impl AppState {
             self.upstream_healthy.store(true, Ordering::Relaxed);
         }
     }
+    
+    /// Reload configuration from disk
+    /// Returns the number of rules in the new config, or an error
+    pub async fn reload_config(&self) -> Result<usize, String> {
+        let path = self.config_path.as_ref();
+        
+        // Load new config from file
+        let new_config = AppConfig::load(path)
+            .map_err(|e| format!("Failed to load config from {}: {}", path, e))?;
+        
+        let rules_count = new_config.rules.len();
+        
+        // Update the config
+        {
+            let mut config = self.config.write().await;
+            *config = new_config;
+        }
+        
+        tracing::info!("Configuration reloaded from {}: {} rules", path, rules_count);
+        Ok(rules_count)
+    }
 }

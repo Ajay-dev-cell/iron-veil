@@ -127,6 +127,7 @@ pub async fn start_api_server(port: u16, state: AppState) -> anyhow::Result<()> 
         .route("/rules/export", get(export_rules))
         .route("/rules/import", post(import_rules))
         .route("/config", get(get_config).post(update_config))
+        .route("/config/reload", post(reload_config))
         .route("/scan", post(scan_database))
         .route("/connections", get(get_connections))
         .route("/schema", get(get_schema))
@@ -322,6 +323,21 @@ async fn update_config(State(state): State<AppState>, Json(payload): Json<Value>
         config.masking_enabled = enabled;
     }
     Json(json!({ "status": "success", "masking_enabled": config.masking_enabled }))
+}
+
+/// Reload configuration from disk
+async fn reload_config(State(state): State<AppState>) -> impl IntoResponse {
+    match state.reload_config().await {
+        Ok(rules_count) => (StatusCode::OK, Json(json!({
+            "status": "success",
+            "message": "Configuration reloaded successfully",
+            "rules_count": rules_count
+        }))),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            "status": "error",
+            "error": e
+        }))),
+    }
 }
 
 async fn scan_database() -> Json<Value> {

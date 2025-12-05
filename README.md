@@ -8,14 +8,29 @@
 
 ## Features
 
-*   **Real-time Anonymization**: Masks PII data (emails, credit cards, phone numbers, addresses) in database result sets.
+### Core Functionality
+*   **Real-time Anonymization**: Masks PII data in database result sets on the fly.
 *   **Multi-Database Support**: Works with both **PostgreSQL** and **MySQL** wire protocols.
 *   **Zero-Copy Parsing**: Built with `tokio` and `bytes` for high throughput and low latency.
 *   **Configurable Rules**: Define masking strategies per table and column via `proxy.yaml`.
-*   **Heuristic PII Detection**: Automatically detects and masks PII using regex patterns (emails, credit cards).
+*   **TLS Support**: Client-to-proxy and proxy-to-upstream TLS encryption.
+
+### PII Detection
+*   **Extended PII Types**: Detects emails, credit cards, SSN, phone numbers, IP addresses, dates of birth, and passport numbers.
+*   **Heuristic Detection**: Automatically detects and masks PII using regex patterns.
 *   **JSON/Array Support**: Recursively masks PII in JSON objects and PostgreSQL/MySQL array types.
 *   **Deterministic Masking**: Same input always produces the same fake output (useful for testing).
-*   **TLS Support**: Client-to-proxy and proxy-to-upstream TLS encryption.
+
+### Production Ready
+*   **Graceful Shutdown**: Signal handling (SIGTERM, SIGINT) with connection draining.
+*   **API Authentication**: API key and JWT (HS256) authentication for management endpoints.
+*   **Connection Limits**: Max connections and rate limiting support.
+*   **Connection Timeouts**: Configurable idle and connect timeouts.
+*   **Health Checks**: Background upstream health monitoring with configurable thresholds.
+*   **Hot Reload**: Automatic config reload on file changes, plus manual reload API.
+
+### Observability
+*   **Prometheus Metrics**: `/metrics` endpoint with connection, query, and masking metrics.
 *   **OpenTelemetry**: Distributed tracing integration for observability.
 *   **Live Inspector**: View real-time query logs and data transformations via the web dashboard.
 
@@ -137,6 +152,54 @@ rules:
 | `credit_card` | Generates fake CC number | `4532-xxxx-xxxx-1234` |
 | `json` | Recursively masks PII in JSON | `{"email": "fake@example.com"}` |
 
+### PII Types Auto-Detected
+
+| Type | Pattern | Example |
+|------|---------|---------|
+| Email | Standard email format | `user@domain.com` |
+| Credit Card | 13-19 digit numbers | `4111111111111111` |
+| SSN | XXX-XX-XXXX format | `123-45-6789` |
+| Phone | International format with country code | `+1-555-123-4567` |
+| IP Address | IPv4 format | `192.168.1.1` |
+| Date of Birth | Various date formats | `1990-01-15`, `01/15/1990` |
+| Passport | Alphanumeric (6-9 chars) | `AB1234567` |
+
+## Management API
+
+The management API runs on port 3001 by default.
+
+### Public Endpoints (No Auth Required)
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check with upstream status |
+| `/metrics` | GET | Prometheus metrics |
+
+### Protected Endpoints (Require API Key or JWT)
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/rules` | GET | List all masking rules |
+| `/rules` | POST | Add a new masking rule |
+| `/rules/delete` | POST | Delete a rule by index or column/table |
+| `/rules/export` | GET | Export rules as JSON |
+| `/rules/import` | POST | Import rules from JSON array |
+| `/config` | GET | Get current configuration |
+| `/config` | POST | Update configuration |
+| `/config/reload` | POST | Reload config from disk |
+| `/scan` | POST | Scan database for PII |
+| `/connections` | GET | List active connections |
+| `/schema` | GET | Get database schema |
+| `/logs` | GET | Get recent query logs |
+
+### Authentication
+
+```bash
+# Using API Key
+curl -H "X-API-Key: your-secret-key" http://localhost:3001/rules
+
+# Using JWT
+curl -H "Authorization: Bearer <token>" http://localhost:3001/rules
+```
+
 ## Architecture
 
 ```
@@ -160,7 +223,7 @@ iron-veil/
 │   ├── config.rs        # Configuration loading (proxy.yaml)
 │   ├── api.rs           # Axum management API
 │   ├── state.rs         # Shared application state
-│   ├── scanner.rs       # PII regex scanner
+│   ├── scanner.rs       # PII regex scanner (7 PII types)
 │   ├── interceptor.rs   # Anonymizer implementations (PG + MySQL)
 │   ├── telemetry.rs     # OpenTelemetry setup
 │   ├── metrics.rs       # Prometheus metrics
@@ -168,6 +231,8 @@ iron-veil/
 │       ├── mod.rs
 │       ├── postgres.rs  # PostgreSQL wire protocol codec
 │       └── mysql.rs     # MySQL wire protocol codec
+├── tests/
+│   └── integration_test.rs  # Integration tests (17 tests)
 ├── web/                 # Next.js dashboard
 ├── proxy.yaml           # Configuration file
 └── docker-compose.yml   # Full stack deployment
@@ -203,14 +268,30 @@ ironveil_idle_timeouts_total
 ## Development
 
 ```bash
-# Run tests
+# Run tests (68 tests total)
 cargo test
+
+# Run only unit tests
+cargo test --bin iron-veil
+
+# Run only integration tests
+cargo test --test integration_test
 
 # Check for issues
 cargo clippy
 
 # Format code
 cargo fmt
+```
+
+## Testing with Docker
+
+```bash
+# Start full stack (proxy + postgres + web dashboard)
+docker compose up -d
+
+# View logs
+docker compose logs -f proxy
 ```
 
 ## Testing OpenTelemetry
