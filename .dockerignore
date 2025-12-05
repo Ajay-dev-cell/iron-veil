@@ -1,0 +1,44 @@
+# Build artifacts
+target/
+*.rs.bk
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Documentation (not needed in container)
+*.md
+!README.md
+docs/
+
+# Web frontend (separate build)
+web/node_modules/
+web/.next/
+web/out/
+
+# Scripts and development files
+scripts/
+assets/
+
+# Certificate sources (use mounted certs in production)
+# Keep certs/ for development convenience
+
+# Docker files
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# CI/CD
+.github/
+
+# Misc
+.DS_Store
+*.log
+*.tmp
