@@ -23,6 +23,11 @@ pub struct ApiConfig {
     /// If set, all sensitive endpoints require `X-API-Key` header.
     #[serde(default)]
     pub api_key: Option<String>,
+    
+    /// JWT secret for token-based authentication.
+    /// If set, endpoints also accept `Authorization: Bearer <token>` header.
+    #[serde(default)]
+    pub jwt_secret: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

@@ -18,6 +18,11 @@ api:
   # If set, all sensitive endpoints require `X-API-Key` header.
   # Uncomment and set a secure key for production use:
   # api_key: "your-secure-api-key-here"
+  
+  # JWT secret for token-based authentication.
+  # If set, endpoints also accept `Authorization: Bearer <token>` header.
+  # Uncomment and set a secure secret for production use:
+  # jwt_secret: "your-jwt-secret-here"
 
 rules:
   - table: "users"

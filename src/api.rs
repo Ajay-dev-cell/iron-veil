@@ -9,57 +9,109 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
+use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::net::SocketAddr;
 use std::sync::atomic::Ordering;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
-/// Middleware to validate API key for protected endpoints
-async fn api_key_auth(
+/// JWT Claims structure
+#[derive(Debug, Serialize, Deserialize)]
+struct Claims {
+    /// Subject (user identifier)
+    sub: String,
+    /// Expiration time (Unix timestamp)
+    exp: usize,
+    /// Issued at (Unix timestamp)
+    #[serde(default)]
+    iat: usize,
+}
+
+/// Validates a JWT token and returns the claims if valid
+fn validate_jwt(token: &str, secret: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
+    let decoding_key = DecodingKey::from_secret(secret.as_bytes());
+    let mut validation = Validation::new(Algorithm::HS256);
+    validation.validate_exp = true;
+    
+    let token_data = decode::<Claims>(token, &decoding_key, &validation)?;
+    Ok(token_data.claims)
+}
+
+/// Middleware to validate API key or JWT for protected endpoints
+async fn api_auth(
     State(state): State<AppState>,
     request: Request<Body>,
     next: Next,
 ) -> Response {
     let config = state.config.read().await;
     
-    // Check if API key authentication is enabled
-    let required_key = config
-        .api
-        .as_ref()
-        .and_then(|api| api.api_key.as_ref());
+    let api_config = config.api.as_ref();
+    let api_key = api_config.and_then(|c| c.api_key.as_ref());
+    let jwt_secret = api_config.and_then(|c| c.jwt_secret.as_ref());
     
-    match required_key {
-        Some(expected_key) => {
-            // API key is required - validate header
-            let provided_key = request
-                .headers()
-                .get("X-API-Key")
-                .and_then(|v| v.to_str().ok());
-            
-            match provided_key {
-                Some(key) if key == expected_key => {
-                    drop(config); // Release lock before calling next
-                    next.run(request).await
-                }
-                Some(_) => {
-                    (StatusCode::UNAUTHORIZED, Json(json!({
-                        "error": "Invalid API key"
-                    }))).into_response()
-                }
-                None => {
-                    (StatusCode::UNAUTHORIZED, Json(json!({
-                        "error": "Missing X-API-Key header"
-                    }))).into_response()
+    // If neither API key nor JWT is configured, allow all requests
+    if api_key.is_none() && jwt_secret.is_none() {
+        drop(config);
+        return next.run(request).await;
+    }
+    
+    // Try API key authentication first
+    if let Some(expected_key) = api_key {
+        if let Some(provided_key) = request
+            .headers()
+            .get("X-API-Key")
+            .and_then(|v| v.to_str().ok())
+        {
+            if provided_key == expected_key {
+                drop(config);
+                return next.run(request).await;
+            } else {
+                return (StatusCode::UNAUTHORIZED, Json(json!({
+                    "error": "Invalid API key"
+                }))).into_response();
+            }
+        }
+    }
+    
+    // Try JWT authentication
+    if let Some(secret) = jwt_secret {
+        if let Some(auth_header) = request
+            .headers()
+            .get("Authorization")
+            .and_then(|v| v.to_str().ok())
+        {
+            if let Some(token) = auth_header.strip_prefix("Bearer ") {
+                match validate_jwt(token, secret) {
+                    Ok(_claims) => {
+                        drop(config);
+                        return next.run(request).await;
+                    }
+                    Err(e) => {
+                        tracing::debug!("JWT validation failed: {}", e);
+                        return (StatusCode::UNAUTHORIZED, Json(json!({
+                            "error": "Invalid or expired JWT token"
+                        }))).into_response();
+                    }
                 }
             }
         }
-        None => {
-            // No API key configured - allow all requests
-            drop(config);
-            next.run(request).await
-        }
     }
+    
+    // No valid authentication provided
+    let auth_methods: Vec<&str> = [
+        api_key.map(|_| "X-API-Key header"),
+        jwt_secret.map(|_| "Authorization: Bearer <token>"),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    
+    (StatusCode::UNAUTHORIZED, Json(json!({
+        "error": "Authentication required",
+        "methods": auth_methods
+    }))).into_response()
 }
 
 pub async fn start_api_server(port: u16, state: AppState) -> anyhow::Result<()> {
@@ -67,7 +119,7 @@ pub async fn start_api_server(port: u16, state: AppState) -> anyhow::Result<()> 
     let public_routes = Router::new()
         .route("/health", get(health_check));
     
-    // Protected routes (require API key if configured)
+    // Protected routes (require API key or JWT if configured)
     let protected_routes = Router::new()
         .route("/rules", get(get_rules).post(add_rule))
         .route("/config", get(get_config).post(update_config))
@@ -75,7 +127,7 @@ pub async fn start_api_server(port: u16, state: AppState) -> anyhow::Result<()> 
         .route("/connections", get(get_connections))
         .route("/schema", get(get_schema))
         .route("/logs", get(get_logs))
-        .layer(middleware::from_fn_with_state(state.clone(), api_key_auth));
+        .layer(middleware::from_fn_with_state(state.clone(), api_auth));
     
     // Combine routes
     let app = Router::new()
@@ -214,6 +266,7 @@ mod tests {
         let config = AppConfig {
             api: Some(ApiConfig {
                 api_key: Some("my-secret-key".to_string()),
+                jwt_secret: None,
             }),
             ..Default::default()
         };
@@ -241,6 +294,89 @@ mod tests {
             .and_then(|api| api.api_key.as_ref());
         
         assert_eq!(required_key, None);
+    }
+
+    #[tokio::test]
+    async fn test_jwt_validation_valid_token() {
+        use jsonwebtoken::{encode, EncodingKey, Header};
+        
+        let secret = "test-jwt-secret";
+        let claims = Claims {
+            sub: "test-user".to_string(),
+            exp: (chrono::Utc::now() + chrono::Duration::hours(1)).timestamp() as usize,
+            iat: chrono::Utc::now().timestamp() as usize,
+        };
+        
+        let token = encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(secret.as_bytes()),
+        ).unwrap();
+        
+        let result = validate_jwt(&token, secret);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().sub, "test-user");
+    }
+
+    #[tokio::test]
+    async fn test_jwt_validation_expired_token() {
+        use jsonwebtoken::{encode, EncodingKey, Header};
+        
+        let secret = "test-jwt-secret";
+        let claims = Claims {
+            sub: "test-user".to_string(),
+            exp: (chrono::Utc::now() - chrono::Duration::hours(1)).timestamp() as usize,
+            iat: (chrono::Utc::now() - chrono::Duration::hours(2)).timestamp() as usize,
+        };
+        
+        let token = encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(secret.as_bytes()),
+        ).unwrap();
+        
+        let result = validate_jwt(&token, secret);
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_jwt_validation_wrong_secret() {
+        use jsonwebtoken::{encode, EncodingKey, Header};
+        
+        let claims = Claims {
+            sub: "test-user".to_string(),
+            exp: (chrono::Utc::now() + chrono::Duration::hours(1)).timestamp() as usize,
+            iat: chrono::Utc::now().timestamp() as usize,
+        };
+        
+        let token = encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(b"correct-secret"),
+        ).unwrap();
+        
+        let result = validate_jwt(&token, "wrong-secret");
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_jwt_config_parsing() {
+        let config = AppConfig {
+            api: Some(ApiConfig {
+                api_key: None,
+                jwt_secret: Some("my-jwt-secret".to_string()),
+            }),
+            ..Default::default()
+        };
+        let state = AppState::new(config);
+        let config_guard = state.config.read().await;
+        
+        let jwt_secret = config_guard
+            .api
+            .as_ref()
+            .and_then(|api| api.jwt_secret.as_ref());
+        
+        assert_eq!(jwt_secret, Some(&"my-jwt-secret".to_string()));
     }
 
     #[tokio::test]

@@ -25,8 +25,8 @@ This document outlines the remaining work needed to make IronVeil production-rea
 
 ### 3. Management API Authentication ✅
 - [x] Add API key authentication middleware
-- [ ] Support for JWT tokens (optional, deferred)
-- [x] Add `api_key` configuration option in `proxy.yaml`
+- [x] Support for JWT tokens (HS256 algorithm)
+- [x] Add `api_key` and `jwt_secret` configuration options in `proxy.yaml`
 - [x] Protect sensitive endpoints: `/rules`, `/config`, `/scan`, `/connections`, `/schema`, `/logs`
 
 **Files:** `src/api.rs`, `src/config.rs`, `proxy.yaml`

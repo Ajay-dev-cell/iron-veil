@@ -95,7 +95,8 @@ telemetry:
 
 # Management API Security
 api:
-  api_key: "your-secret-key"  # Optional: protects /rules, /config, /scan endpoints
+  api_key: "your-secret-key"  # Optional: protects endpoints via X-API-Key header
+  jwt_secret: "your-jwt-secret"  # Optional: allows Authorization: Bearer <token>
 
 # Masking Rules
 rules:
