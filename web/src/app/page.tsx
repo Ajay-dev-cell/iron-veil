@@ -30,10 +30,12 @@ export default function DashboardPage() {
         <h2 className="text-3xl font-bold tracking-tight text-white">Dashboard</h2>
         <div className="flex items-center space-x-2">
             <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${health?.status === 'ok' ? 'bg-emerald-400' : 'bg-yellow-400'} opacity-75`}></span>
+              <span className={`relative inline-flex rounded-full h-3 w-3 ${health?.status === 'ok' ? 'bg-emerald-500' : 'bg-yellow-500'}`}></span>
             </span>
-            <span className="text-sm text-emerald-500 font-medium">System Operational</span>
+            <span className={`text-sm ${health?.status === 'ok' ? 'text-emerald-500' : 'text-yellow-500'} font-medium`}>
+              {health?.status === 'ok' ? 'System Operational' : health?.status === 'degraded' ? 'Degraded' : 'Checking...'}
+            </span>
         </div>
       </div>
 
@@ -77,12 +79,16 @@ export default function DashboardPage() {
             <CardTitle className="text-sm font-medium text-slate-200">
               Upstream Status
             </CardTitle>
-            <Database className="h-4 w-4 text-blue-500" />
+            <Database className={`h-4 w-4 ${health?.upstream?.healthy ? 'text-blue-500' : 'text-red-500'}`} />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-white">Online</div>
+            <div className={`text-2xl font-bold ${health?.upstream?.healthy ? 'text-white' : 'text-red-500'}`}>
+              {health?.upstream?.healthy === undefined ? '...' : health?.upstream?.healthy ? 'Online' : 'Offline'}
+            </div>
             <p className="text-xs text-slate-400">
-              PostgreSQL / MySQL
+              {health?.upstream?.latency_ms !== undefined 
+                ? `Latency: ${health.upstream.latency_ms}ms` 
+                : 'PostgreSQL / MySQL'}
             </p>
           </CardContent>
         </Card>

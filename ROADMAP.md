@@ -104,11 +104,14 @@ health_check:
 
 **Files:** `src/api.rs`, `src/telemetry.rs`
 
-### 11. Frontend Dynamic Version
-- [ ] Fetch version from `/health` endpoint instead of hardcoded
-- [ ] Display upstream connection status dynamically
+### 11. Frontend Dynamic Version ✅
+- [x] Fetch version from `/health` endpoint (already implemented)
+- [x] Display upstream connection status dynamically in dashboard
+- [x] Show latency metrics in upstream status card
+- [x] Update sidebar to show real-time upstream health
+- [x] Status indicator reflects overall system health (ok/degraded)
 
-**Files:** `web/src/app/settings/page.tsx`
+**Files:** `web/src/app/page.tsx`, `web/src/components/sidebar.tsx`
 
 ---
 
