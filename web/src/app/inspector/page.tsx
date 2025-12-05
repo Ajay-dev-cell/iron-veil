@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Activity, Database, Shield, Clock, ChevronRight, ChevronDown } from "lucide-react"
+import { Activity } from "lucide-react"
 
 interface LogEntry {
   id: string
@@ -9,7 +9,15 @@ interface LogEntry {
   connection_id: number
   event_type: string
   content: string
-  details?: any
+  details?: LogDetail[]
+}
+
+interface LogDetail {
+  column_idx: number
+  column_name?: string
+  strategy: string
+  original: string
+  masked: string
 }
 
 export default function InspectorPage() {
@@ -133,7 +141,7 @@ export default function InspectorPage() {
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-800">
-                              {log.details.map((detail: any, idx: number) => (
+                              {log.details.map((detail: LogDetail, idx: number) => (
                                 <tr key={idx}>
                                   <td className="px-4 py-2 text-gray-300">{detail.column_idx}</td>
                                   <td className="px-4 py-2 text-purple-400">{detail.strategy}</td>

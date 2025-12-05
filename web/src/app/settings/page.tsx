@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Settings, Power, Download, Server, Shield, AlertTriangle } from "lucide-react"
+import { Power, Download, Server } from "lucide-react"
 
 export default function SettingsPage() {
   const [config, setConfig] = useState<{ masking_enabled: boolean; rules_count: number } | null>(null)
