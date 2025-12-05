@@ -43,7 +43,6 @@ src/
 - **Critical**: When modifying packet payloads (masking), recalculate and update length headers to maintain protocol integrity.
 
 ## Key Files to Reference
-- `ROADMAP.md` - Project status and remaining tasks
 - `proxy.yaml` - Configuration schema (TLS, telemetry, masking rules)
 - `src/protocol/postgres.rs` - Reference implementation for wire protocol codec
 - `src/interceptor.rs` - `PacketInterceptor` and `MySqlPacketInterceptor` traits

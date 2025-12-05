@@ -148,8 +148,7 @@ iron-veil/
 │       └── mysql.rs     # MySQL wire protocol codec
 ├── web/                 # Next.js dashboard
 ├── proxy.yaml           # Configuration file
-├── docker-compose.yml   # Full stack deployment
-└── ROADMAP.md           # Project status
+└── docker-compose.yml   # Full stack deployment
 ```
 
 ## Development
