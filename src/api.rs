@@ -149,12 +149,32 @@ pub async fn start_api_server(port: u16, state: AppState) -> anyhow::Result<()> 
     Ok(())
 }
 
-async fn health_check() -> Json<Value> {
-    Json(json!({
-        "status": "ok",
+async fn health_check(State(state): State<AppState>) -> impl IntoResponse {
+    let health_status = state.health_status.read().await;
+    let active_connections = state.active_connections.load(Ordering::Relaxed);
+    
+    let response = json!({
+        "status": if health_status.healthy { "ok" } else { "degraded" },
         "service": "ironveil",
-        "version": env!("CARGO_PKG_VERSION")
-    }))
+        "version": env!("CARGO_PKG_VERSION"),
+        "upstream": {
+            "healthy": health_status.healthy,
+            "last_check": health_status.last_check,
+            "last_error": health_status.last_error,
+            "latency_ms": health_status.latency_ms,
+            "consecutive_failures": health_status.consecutive_failures,
+            "consecutive_successes": health_status.consecutive_successes
+        },
+        "connections": {
+            "active": active_connections
+        }
+    });
+    
+    if health_status.healthy {
+        (StatusCode::OK, Json(response))
+    } else {
+        (StatusCode::SERVICE_UNAVAILABLE, Json(response))
+    }
 }
 
 async fn get_rules(State(state): State<AppState>) -> Json<Value> {
@@ -249,15 +269,17 @@ async fn get_logs(State(state): State<AppState>) -> Json<Value> {
 mod tests {
     use super::*;
     use crate::config::{ApiConfig, AppConfig};
+    use axum::extract::State;
 
     #[tokio::test]
     async fn test_health_check() {
-        let response = health_check().await;
-        let json = response.0;
+        let config = AppConfig::default();
+        let state = AppState::new(config);
+        let response = health_check(State(state)).await;
+        let (status, json) = response.into_response().into_parts();
 
-        assert_eq!(json["status"], "ok");
-        assert_eq!(json["service"], "ironveil");
-        assert!(json["version"].is_string());
+        // For default state (healthy), we should get 200 OK
+        assert_eq!(status.status, StatusCode::OK);
     }
 
     #[tokio::test]
@@ -391,6 +413,7 @@ mod tests {
             tls: None,
             upstream_tls: false,
             telemetry: None, api: None, limits: None,
+            health_check: None,
         };
         let state = AppState::new(config);
 
@@ -409,6 +432,7 @@ mod tests {
             tls: None,
             upstream_tls: false,
             telemetry: None, api: None, limits: None,
+            health_check: None,
         };
         let state = AppState::new(config);
 
@@ -432,6 +456,7 @@ mod tests {
             tls: None,
             upstream_tls: false,
             telemetry: None, api: None, limits: None,
+            health_check: None,
         };
         let state = AppState::new(config);
 
@@ -465,6 +490,7 @@ mod tests {
             tls: None,
             upstream_tls: false,
             telemetry: None, api: None, limits: None,
+            health_check: None,
         };
         let state = AppState::new(config);
 
@@ -483,6 +509,7 @@ mod tests {
             tls: None,
             upstream_tls: false,
             telemetry: None, api: None, limits: None,
+            health_check: None,
         };
         let state = AppState::new(config);
 

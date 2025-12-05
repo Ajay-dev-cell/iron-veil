@@ -100,6 +100,66 @@ async fn shutdown_signal() {
     }
 }
 
+/// Background task that periodically checks upstream database connectivity
+async fn run_health_check_task(
+    state: AppState,
+    upstream_host: String,
+    upstream_port: u16,
+    config: Option<crate::config::HealthCheckConfig>,
+) {
+    let config = config.unwrap_or_default();
+    let interval = Duration::from_secs(config.interval_secs);
+    let timeout = Duration::from_secs(config.timeout_secs);
+    
+    info!(
+        "Starting upstream health check task (interval: {}s, timeout: {}s)",
+        config.interval_secs, config.timeout_secs
+    );
+    
+    loop {
+        let start = Instant::now();
+        
+        // Try to connect to upstream
+        let connect_result = tokio::time::timeout(
+            timeout,
+            tokio::net::TcpStream::connect(format!("{}:{}", upstream_host, upstream_port))
+        ).await;
+        
+        let latency = start.elapsed().as_millis() as u64;
+        
+        match connect_result {
+            Ok(Ok(_stream)) => {
+                // Connection successful
+                state.update_health_status(true, Some(latency), None).await;
+                tracing::debug!(
+                    "Health check passed: upstream {}:{} ({}ms)",
+                    upstream_host, upstream_port, latency
+                );
+            }
+            Ok(Err(e)) => {
+                // Connection failed
+                let error = format!("Connection failed: {}", e);
+                state.update_health_status(false, None, Some(error.clone())).await;
+                warn!(
+                    "Health check failed: upstream {}:{} - {}",
+                    upstream_host, upstream_port, error
+                );
+            }
+            Err(_) => {
+                // Timeout
+                let error = format!("Connection timeout after {}s", config.timeout_secs);
+                state.update_health_status(false, None, Some(error.clone())).await;
+                warn!(
+                    "Health check timeout: upstream {}:{} - {}",
+                    upstream_host, upstream_port, error
+                );
+            }
+        }
+        
+        tokio::time::sleep(interval).await;
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
@@ -146,6 +206,23 @@ async fn main() -> Result<()> {
             tracing::error!("API server error: {}", e);
         }
     });
+
+    // Start upstream health check task
+    let health_check_enabled = config
+        .health_check
+        .as_ref()
+        .map(|h| h.enabled)
+        .unwrap_or(true);
+    
+    if health_check_enabled {
+        let health_state = state.clone();
+        let health_host = args.upstream_host.clone();
+        let health_port = args.upstream_port;
+        let health_config = config.health_check.clone();
+        tokio::spawn(async move {
+            run_health_check_task(health_state, health_host, health_port, health_config).await;
+        });
+    }
 
     info!("Starting DB Proxy on port {}", args.port);
     info!(

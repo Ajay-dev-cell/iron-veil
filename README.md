@@ -105,6 +105,14 @@ limits:
   connect_timeout_secs: 30  # Upstream connection timeout (default: 30)
   idle_timeout_secs: 300  # Idle connection timeout (default: 300)
 
+# Upstream Health Check
+health_check:
+  enabled: true  # Enable health checks (default: true)
+  interval_secs: 10  # Check interval (default: 10)
+  timeout_secs: 5  # Health check timeout (default: 5)
+  unhealthy_threshold: 3  # Failures before unhealthy (default: 3)
+  healthy_threshold: 1  # Successes before healthy (default: 1)
+
 # Masking Rules
 rules:
   - table: "users"        # Table-specific rule

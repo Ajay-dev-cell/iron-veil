@@ -38,6 +38,23 @@ limits:
   # Idle timeout - close connection after no activity in seconds (default: 300)
   # idle_timeout_secs: 300
 
+# Upstream Health Check Configuration
+health_check:
+  # Enable upstream health checks (default: true)
+  enabled: true
+  
+  # Interval between health checks in seconds (default: 10)
+  # interval_secs: 10
+  
+  # Timeout for health check connection in seconds (default: 5)
+  # timeout_secs: 5
+  
+  # Number of consecutive failures before marking unhealthy (default: 3)
+  # unhealthy_threshold: 3
+  
+  # Number of consecutive successes before marking healthy (default: 1)
+  # healthy_threshold: 1
+
 rules:
   - table: "users"
     column: "email"

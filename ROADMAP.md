@@ -61,13 +61,24 @@ This document outlines the remaining work needed to make IronVeil production-rea
 
 ## 🟡 High Priority (Should Have)
 
-### 7. Upstream Health Check
-- [ ] Verify upstream database connectivity at startup
-- [ ] Add `/health` endpoint that checks upstream status
-- [ ] Configurable retry logic for upstream connection failures
-- [ ] Circuit breaker pattern for upstream failures
+### 7. Upstream Health Check ✅
+- [x] Background health check task with configurable interval
+- [x] Enhanced `/health` endpoint that checks upstream status
+- [x] Configurable thresholds (unhealthy_threshold, healthy_threshold)
+- [x] Health status tracking with latency metrics
+- [x] Returns HTTP 503 when upstream is unhealthy
 
-**Files:** `src/main.rs`, `src/api.rs`
+**Configuration:**
+```yaml
+health_check:
+  enabled: true
+  interval_secs: 10
+  timeout_secs: 5
+  unhealthy_threshold: 3
+  healthy_threshold: 1
+```
+
+**Files:** `src/main.rs`, `src/api.rs`, `src/state.rs`, `src/config.rs`
 
 ### 8. Implement Real Database Scanner
 - [ ] Replace mocked `/scan` endpoint with actual implementation

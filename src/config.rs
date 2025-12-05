@@ -17,6 +17,8 @@ pub struct AppConfig {
     pub api: Option<ApiConfig>,
     #[serde(default)]
     pub limits: Option<LimitsConfig>,
+    #[serde(default)]
+    pub health_check: Option<HealthCheckConfig>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -44,6 +46,62 @@ fn default_connect_timeout() -> u64 {
 
 fn default_idle_timeout() -> u64 {
     300 // 5 minutes
+}
+
+/// Health check configuration for upstream database
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct HealthCheckConfig {
+    /// Enable upstream health checks (default: true)
+    #[serde(default = "default_health_enabled")]
+    pub enabled: bool,
+    
+    /// Interval between health checks in seconds (default: 10)
+    #[serde(default = "default_health_interval")]
+    pub interval_secs: u64,
+    
+    /// Timeout for health check connection in seconds (default: 5)
+    #[serde(default = "default_health_timeout")]
+    pub timeout_secs: u64,
+    
+    /// Number of consecutive failures before marking unhealthy (default: 3)
+    #[serde(default = "default_unhealthy_threshold")]
+    pub unhealthy_threshold: u32,
+    
+    /// Number of consecutive successes before marking healthy (default: 1)
+    #[serde(default = "default_healthy_threshold")]
+    pub healthy_threshold: u32,
+}
+
+impl Default for HealthCheckConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            interval_secs: 10,
+            timeout_secs: 5,
+            unhealthy_threshold: 3,
+            healthy_threshold: 1,
+        }
+    }
+}
+
+fn default_health_enabled() -> bool {
+    true
+}
+
+fn default_health_interval() -> u64 {
+    10
+}
+
+fn default_health_timeout() -> u64 {
+    5
+}
+
+fn default_unhealthy_threshold() -> u32 {
+    3
+}
+
+fn default_healthy_threshold() -> u32 {
+    1
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -105,6 +163,7 @@ impl Default for AppConfig {
             telemetry: None,
             api: None,
             limits: None,
+            health_check: None,
         }
     }
 }

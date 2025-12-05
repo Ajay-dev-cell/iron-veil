@@ -530,6 +530,7 @@ mod tests {
             tls: None,
             upstream_tls: false,
             telemetry: None, api: None, limits: None,
+            health_check: None,
         };
         let state = AppState::new(config);
         let mut anonymizer = Anonymizer::new(state, 1);
@@ -568,6 +569,7 @@ mod tests {
             tls: None,
             upstream_tls: false,
             telemetry: None, api: None, limits: None,
+            health_check: None,
         };
         let state = AppState::new(config);
         let mut anonymizer = Anonymizer::new(state, 1);
@@ -609,6 +611,7 @@ mod tests {
             tls: None,
             upstream_tls: false,
             telemetry: None, api: None, limits: None,
+            health_check: None,
         };
         let state = AppState::new(config);
         let mut anonymizer = Anonymizer::new(state, 1);
@@ -660,6 +663,7 @@ mod tests {
             tls: None,
             upstream_tls: false,
             telemetry: None, api: None, limits: None,
+            health_check: None,
         };
         let state = AppState::new(config);
         let mut anonymizer = Anonymizer::new(state, 1);
@@ -704,6 +708,7 @@ mod tests {
             tls: None,
             upstream_tls: false,
             telemetry: None, api: None, limits: None,
+            health_check: None,
         };
         let state = AppState::new(config);
         let mut anonymizer = Anonymizer::new(state, 1);
@@ -737,6 +742,7 @@ mod tests {
             tls: None,
             upstream_tls: false,
             telemetry: None, api: None, limits: None,
+            health_check: None,
         };
         let state = AppState::new(config);
         let mut anonymizer = Anonymizer::new(state, 1);
@@ -764,6 +770,7 @@ mod tests {
             tls: None,
             upstream_tls: false,
             telemetry: None, api: None, limits: None,
+            health_check: None,
         };
         let state = AppState::new(config);
         let mut anonymizer = Anonymizer::new(state, 1);
