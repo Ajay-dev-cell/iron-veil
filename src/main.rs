@@ -341,6 +341,16 @@ async fn main() -> Result<()> {
         run_config_watcher(watch_state, config_path).await;
     });
 
+    // Start stats history recorder (every 5 seconds)
+    let stats_state = state.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
+        loop {
+            interval.tick().await;
+            stats_state.record_history_snapshot().await;
+        }
+    });
+
     info!("Starting DB Proxy on port {}", args.port);
     info!(
         "Forwarding to upstream at {}:{}",
@@ -432,6 +442,7 @@ async fn main() -> Result<()> {
 
                     async {
                         state.active_connections.fetch_add(1, Ordering::Relaxed);
+                        state.record_connection().await;
                         let result = match protocol {
                             DbProtocol::Postgres => {
                                 process_postgres_connection(
@@ -673,27 +684,49 @@ where
                                 client_framed.get_mut().write_all(b"N").await?;
                             }
                             PgMessage::Query(ref q) => {
+                                let query_str = String::from_utf8_lossy(&q.query).to_string();
                                 let id = format!("{:x}", rand::random::<u128>());
                                 state.add_log(LogEntry {
                                     id,
                                     timestamp: Utc::now(),
                                     connection_id,
                                     event_type: "Query".to_string(),
-                                    content: String::from_utf8_lossy(&q.query).to_string(),
+                                    content: query_str.clone(),
                                     details: None,
                                 }).await;
+                                
+                                // Record query type stats
+                                let query_type = query_str
+                                    .trim()
+                                    .split_whitespace()
+                                    .next()
+                                    .unwrap_or("OTHER")
+                                    .to_uppercase();
+                                state.record_query(&query_type).await;
+                                
                                 upstream_framed.send(msg).await?;
                             }
                             PgMessage::Parse(ref p) => {
+                                let query_str = String::from_utf8_lossy(&p.query).to_string();
                                 let id = format!("{:x}", rand::random::<u128>());
                                 state.add_log(LogEntry {
                                     id,
                                     timestamp: Utc::now(),
                                     connection_id,
                                     event_type: "Parse".to_string(),
-                                    content: String::from_utf8_lossy(&p.query).to_string(),
+                                    content: query_str.clone(),
                                     details: None,
                                 }).await;
+                                
+                                // Record query type stats for prepared statements
+                                let query_type = query_str
+                                    .trim()
+                                    .split_whitespace()
+                                    .next()
+                                    .unwrap_or("OTHER")
+                                    .to_uppercase();
+                                state.record_query(&query_type).await;
+                                
                                 upstream_framed.send(msg).await?;
                             }
                             _ => {
@@ -861,15 +894,26 @@ where
                 match msg {
                     Some(Ok(msg)) => {
                         if let MySqlMessage::Query(q) = &msg {
+                            let query_str = String::from_utf8_lossy(&q.query).to_string();
                             let id = format!("{:x}", rand::random::<u128>());
                             state.add_log(LogEntry {
                                 id,
                                 timestamp: Utc::now(),
                                 connection_id,
                                 event_type: "MySqlQuery".to_string(),
-                                content: String::from_utf8_lossy(&q.query).to_string(),
+                                content: query_str.clone(),
                                 details: None,
                             }).await;
+                            
+                            // Record query type stats
+                            let query_type = query_str
+                                .trim()
+                                .split_whitespace()
+                                .next()
+                                .unwrap_or("OTHER")
+                                .to_uppercase();
+                            state.record_query(&query_type).await;
+                            
                             // Reset interceptor for new result set
                             interceptor.reset_columns();
                         }
