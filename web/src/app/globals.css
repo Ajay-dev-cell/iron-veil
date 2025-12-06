@@ -32,6 +32,10 @@
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
+  
+  /* Animation keyframes */
+  --animate-in: enter 0.2s ease-out;
+  --animate-out: exit 0.2s ease-in;
 }
 
 :root {
@@ -64,6 +68,9 @@
   --ring: 221.2 83.2% 53.3%;
 
   --radius: 0.5rem;
+  
+  --sidebar-bg: 220 20% 97%;
+  --sidebar-border: 214.3 31.8% 91.4%;
 }
 
 .dark {
@@ -94,6 +101,9 @@
   --border: 217.2 32.6% 17.5%;
   --input: 217.2 32.6% 17.5%;
   --ring: 212.7 26.8% 83.9%;
+  
+  --sidebar-bg: 222.2 84% 4.9%;
+  --sidebar-border: 217.2 32.6% 17.5%;
 }
 
 @layer base {
@@ -103,4 +113,95 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Animations */
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes exit {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes slide-in-from-top {
+  from { transform: translateY(-10px); }
+  to { transform: translateY(0); }
+}
+
+@keyframes slide-in-from-bottom {
+  from { transform: translateY(10px); }
+  to { transform: translateY(0); }
+}
+
+@keyframes zoom-in {
+  from { transform: scale(0.95); }
+  to { transform: scale(1); }
+}
+
+@keyframes zoom-out {
+  from { transform: scale(1); }
+  to { transform: scale(0.95); }
+}
+
+.animate-in {
+  animation-name: enter;
+  animation-duration: 0.15s;
+  animation-fill-mode: forwards;
+}
+
+.animate-out {
+  animation-name: exit;
+  animation-duration: 0.15s;
+  animation-fill-mode: forwards;
+}
+
+.fade-in-0 { animation-name: fade-in; animation-duration: 0.15s; }
+.fade-out-0 { animation-name: fade-out; animation-duration: 0.15s; }
+.zoom-in-95 { animation-name: zoom-in; animation-duration: 0.15s; }
+.zoom-out-95 { animation-name: zoom-out; animation-duration: 0.15s; }
+.slide-in-from-top-2 { animation-name: slide-in-from-top; animation-duration: 0.15s; }
+.slide-in-from-bottom-2 { animation-name: slide-in-from-bottom; animation-duration: 0.15s; }
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
 }
