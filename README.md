@@ -189,6 +189,7 @@ The management API runs on port 3001 by default.
 | `/connections` | GET | List active connections |
 | `/schema` | POST | Get database schema (tables and columns) |
 | `/logs` | GET | Get recent query logs |
+| `/audit` | GET | Get audit logs (supports `?limit=N`, `?event_type=X`, `?outcome=Y`) |
 
 ### Authentication
 
@@ -225,6 +226,7 @@ iron-veil/
 │   ├── state.rs         # Shared application state
 │   ├── scanner.rs       # PII regex scanner (7 PII types)
 │   ├── db_scanner.rs    # Real database introspection & PII scanning
+│   ├── audit.rs         # Audit logging for security events
 │   ├── interceptor.rs   # Anonymizer implementations (PG + MySQL)
 │   ├── telemetry.rs     # OpenTelemetry setup
 │   ├── metrics.rs       # Prometheus metrics

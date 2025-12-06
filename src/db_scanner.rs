@@ -20,6 +20,7 @@ pub enum ScanError {
     QueryFailed(String),
     #[error("Unsupported database protocol: {0:?}")]
     UnsupportedProtocol(DbProtocol),
+    #[allow(dead_code)]
     #[error("Authentication required: please provide database credentials")]
     AuthRequired,
 }
@@ -245,19 +246,19 @@ impl DbScanner {
                     (detected_type, confidence)
                 };
 
-                if let Some(pii_type) = final_type {
-                    if final_confidence >= config.confidence_threshold {
-                        findings.push(PiiFinding {
-                            table: table_name.clone(),
-                            column: col.column_name.clone(),
-                            pii_type: format!("{:?}", pii_type),
-                            confidence: (final_confidence * 100.0).round() / 100.0,
-                            sample: sample_value.map(|s| self.mask_sample(&s)),
-                            row_count,
-                            match_count,
-                            data_type: col.data_type.clone(),
-                        });
-                    }
+                if let Some(pii_type) = final_type
+                    && final_confidence >= config.confidence_threshold
+                {
+                    findings.push(PiiFinding {
+                        table: table_name.clone(),
+                        column: col.column_name.clone(),
+                        pii_type: format!("{:?}", pii_type),
+                        confidence: (final_confidence * 100.0).round() / 100.0,
+                        sample: sample_value.map(|s| self.mask_sample(&s)),
+                        row_count,
+                        match_count,
+                        data_type: col.data_type.clone(),
+                    });
                 }
             }
         }

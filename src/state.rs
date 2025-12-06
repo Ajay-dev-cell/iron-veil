@@ -1,3 +1,4 @@
+use crate::audit::AuditLogger;
 use crate::config::AppConfig;
 use chrono::{DateTime, Utc};
 use metrics_exporter_prometheus::PrometheusHandle;
@@ -65,6 +66,8 @@ pub struct AppState {
     pub upstream_port: u16,
     /// Database protocol (Postgres or MySQL)
     pub db_protocol: DbProtocol,
+    /// Audit logger for security events
+    pub audit_logger: Arc<AuditLogger>,
 }
 
 impl AppState {
@@ -75,6 +78,33 @@ impl AppState {
         upstream_port: u16,
         db_protocol: DbProtocol,
     ) -> Self {
+        // Create audit logger from config
+        let audit_logger = config
+            .audit
+            .as_ref()
+            .map(|cfg| {
+                AuditLogger::new(crate::audit::AuditConfig {
+                    enabled: cfg.enabled,
+                    log_to_stdout: cfg.log_to_stdout,
+                    log_file: cfg.log_file.clone(),
+                    rotation_enabled: cfg.rotation_enabled,
+                    max_file_size_bytes: cfg.max_file_size_bytes,
+                    max_rotated_files: cfg.max_rotated_files,
+                    events: cfg.events.iter().map(|e| match e {
+                        crate::config::AuditEventType::AuthAttempt => crate::audit::AuditEventType::AuthAttempt,
+                        crate::config::AuditEventType::ConfigChange => crate::audit::AuditEventType::ConfigChange,
+                        crate::config::AuditEventType::RuleAdded => crate::audit::AuditEventType::RuleAdded,
+                        crate::config::AuditEventType::RuleDeleted => crate::audit::AuditEventType::RuleDeleted,
+                        crate::config::AuditEventType::RulesImported => crate::audit::AuditEventType::RulesImported,
+                        crate::config::AuditEventType::ConfigReload => crate::audit::AuditEventType::ConfigReload,
+                        crate::config::AuditEventType::DatabaseScan => crate::audit::AuditEventType::DatabaseScan,
+                        crate::config::AuditEventType::SchemaQuery => crate::audit::AuditEventType::SchemaQuery,
+                        crate::config::AuditEventType::ApiAccess => crate::audit::AuditEventType::ApiAccess,
+                    }).collect(),
+                })
+            })
+            .unwrap_or_else(|| AuditLogger::new(crate::audit::AuditConfig::default()));
+
         Self {
             config: Arc::new(RwLock::new(config)),
             config_path: Arc::new(config_path),
@@ -86,6 +116,7 @@ impl AppState {
             upstream_host: Arc::new(upstream_host),
             upstream_port,
             db_protocol,
+            audit_logger: Arc::new(audit_logger),
         }
     }
 

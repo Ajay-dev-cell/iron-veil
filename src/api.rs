@@ -1,3 +1,4 @@
+use crate::audit::{AuditEventType, AuditLogger, AuditOutcome, AuthMethod};
 use crate::config::MaskingRule;
 use crate::db_scanner::{DbScanner, ScanConfig};
 use crate::state::AppState;
@@ -43,6 +44,8 @@ fn validate_jwt(token: &str, secret: &str) -> Result<Claims, jsonwebtoken::error
 /// Middleware to validate API key or JWT for protected endpoints
 async fn api_auth(State(state): State<AppState>, request: Request<Body>, next: Next) -> Response {
     let config = state.config.read().await;
+    let endpoint = request.uri().path().to_string();
+    let method = request.method().to_string();
 
     let api_config = config.api.as_ref();
     let api_key = api_config.and_then(|c| c.api_key.as_ref());
@@ -63,8 +66,21 @@ async fn api_auth(State(state): State<AppState>, request: Request<Body>, next: N
     {
         if provided_key == expected_key {
             drop(config);
+            // Log successful API key auth
+            state.audit_logger.log(
+                AuditLogger::auth_success(AuthMethod::ApiKey, None)
+                    .with_endpoint(&endpoint)
+                    .with_method(&method)
+            ).await;
             return next.run(request).await;
         } else {
+            drop(config);
+            // Log failed API key auth
+            state.audit_logger.log(
+                AuditLogger::auth_failure(AuthMethod::ApiKey, "Invalid API key")
+                    .with_endpoint(&endpoint)
+                    .with_method(&method)
+            ).await;
             return (
                 StatusCode::UNAUTHORIZED,
                 Json(json!({
@@ -84,12 +100,25 @@ async fn api_auth(State(state): State<AppState>, request: Request<Body>, next: N
         && let Some(token) = auth_header.strip_prefix("Bearer ")
     {
         match validate_jwt(token, secret) {
-            Ok(_claims) => {
+            Ok(claims) => {
                 drop(config);
+                // Log successful JWT auth
+                state.audit_logger.log(
+                    AuditLogger::auth_success(AuthMethod::Jwt, Some(claims.sub))
+                        .with_endpoint(&endpoint)
+                        .with_method(&method)
+                ).await;
                 return next.run(request).await;
             }
             Err(e) => {
                 tracing::debug!("JWT validation failed: {}", e);
+                drop(config);
+                // Log failed JWT auth
+                state.audit_logger.log(
+                    AuditLogger::auth_failure(AuthMethod::Jwt, format!("JWT validation failed: {}", e))
+                        .with_endpoint(&endpoint)
+                        .with_method(&method)
+                ).await;
                 return (
                     StatusCode::UNAUTHORIZED,
                     Json(json!({
@@ -101,7 +130,19 @@ async fn api_auth(State(state): State<AppState>, request: Request<Body>, next: N
         }
     }
 
+    drop(config);
+    // Log denied access (no credentials)
+    state.audit_logger.log(
+        AuditLogger::auth_denied()
+            .with_endpoint(&endpoint)
+            .with_method(&method)
+    ).await;
+
     // No valid authentication provided
+    let config = state.config.read().await;
+    let api_config = config.api.as_ref();
+    let api_key = api_config.and_then(|c| c.api_key.as_ref());
+    let jwt_secret = api_config.and_then(|c| c.jwt_secret.as_ref());
     let auth_methods: Vec<&str> = [
         api_key.map(|_| "X-API-Key header"),
         jwt_secret.map(|_| "Authorization: Bearer <token>"),
@@ -138,6 +179,7 @@ pub async fn start_api_server(port: u16, state: AppState) -> anyhow::Result<()> 
         .route("/connections", get(get_connections))
         .route("/schema", post(get_schema))
         .route("/logs", get(get_logs))
+        .route("/audit", get(get_audit_logs))
         .layer(middleware::from_fn_with_state(state.clone(), api_auth));
 
     // Combine routes
@@ -198,6 +240,7 @@ async fn add_rule(
     Json(rule): Json<MaskingRule>,
 ) -> impl IntoResponse {
     let mut config = state.config.write().await;
+    let rule_json = serde_json::to_value(&rule).unwrap_or_default();
     config.rules.push(rule);
     let rules_count = config.rules.len();
     drop(config);
@@ -215,6 +258,9 @@ async fn add_rule(
         );
     }
 
+    // Log audit event
+    state.audit_logger.log(AuditLogger::rule_added(rule_json)).await;
+
     (
         StatusCode::OK,
         Json(json!({ "status": "success", "rules_count": rules_count })),
@@ -222,7 +268,7 @@ async fn add_rule(
 }
 
 /// Delete rule request payload
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct DeleteRuleRequest {
     /// Index of the rule to delete (0-based)
     index: Option<usize>,
@@ -239,6 +285,7 @@ async fn delete_rule(
     let mut config = state.config.write().await;
 
     let original_len = config.rules.len();
+    let delete_details = serde_json::to_value(&req).unwrap_or_default();
 
     if let Some(index) = req.index {
         if index >= config.rules.len() {
@@ -286,6 +333,14 @@ async fn delete_rule(
             })),
         );
     }
+
+    // Log audit event
+    state.audit_logger.log(
+        AuditLogger::rule_deleted(json!({
+            "request": delete_details,
+            "deleted_count": deleted_count
+        }))
+    ).await;
 
     (
         StatusCode::OK,
@@ -339,6 +394,9 @@ async fn import_rules(
         );
     }
 
+    // Log audit event
+    state.audit_logger.log(AuditLogger::rules_imported(imported_count)).await;
+
     (
         StatusCode::OK,
         Json(json!({
@@ -359,23 +417,42 @@ async fn get_config(State(state): State<AppState>) -> Json<Value> {
 
 async fn update_config(State(state): State<AppState>, Json(payload): Json<Value>) -> Json<Value> {
     let mut config = state.config.write().await;
+    let mut changes = serde_json::Map::new();
+
     if let Some(enabled) = payload.get("masking_enabled").and_then(|v| v.as_bool()) {
+        let old_value = config.masking_enabled;
         config.masking_enabled = enabled;
+        changes.insert("masking_enabled".to_string(), json!({
+            "old": old_value,
+            "new": enabled
+        }));
     }
+    drop(config);
+
+    // Log audit event if there were changes
+    if !changes.is_empty() {
+        state.audit_logger.log(AuditLogger::config_change(Value::Object(changes))).await;
+    }
+
+    let config = state.config.read().await;
     Json(json!({ "status": "success", "masking_enabled": config.masking_enabled }))
 }
 
 /// Reload configuration from disk
 async fn reload_config(State(state): State<AppState>) -> impl IntoResponse {
     match state.reload_config().await {
-        Ok(rules_count) => (
-            StatusCode::OK,
-            Json(json!({
-                "status": "success",
-                "message": "Configuration reloaded successfully",
-                "rules_count": rules_count
-            })),
-        ),
+        Ok(rules_count) => {
+            // Log audit event
+            state.audit_logger.log(AuditLogger::config_reload(rules_count)).await;
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "status": "success",
+                    "message": "Configuration reloaded successfully",
+                    "rules_count": rules_count
+                })),
+            )
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({
@@ -397,7 +474,13 @@ async fn scan_database(
     );
 
     match scanner.scan(&config).await {
-        Ok(result) => (StatusCode::OK, Json(json!(result))),
+        Ok(result) => {
+            // Log audit event
+            state.audit_logger.log(
+                AuditLogger::database_scan(&config.database, result.findings.len())
+            ).await;
+            (StatusCode::OK, Json(json!(result)))
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({
@@ -426,7 +509,13 @@ async fn get_schema(
     );
 
     match scanner.get_schema(&config).await {
-        Ok(schema) => (StatusCode::OK, Json(json!(schema))),
+        Ok(schema) => {
+            // Log audit event
+            state.audit_logger.log(
+                AuditLogger::schema_query(&config.database, schema.tables.len())
+            ).await;
+            (StatusCode::OK, Json(json!(schema)))
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({
@@ -441,6 +530,66 @@ async fn get_logs(State(state): State<AppState>) -> Json<Value> {
     let logs = state.logs.read().await;
     Json(json!({
         "logs": *logs
+    }))
+}
+
+/// Query parameters for audit log retrieval
+#[derive(Debug, Deserialize)]
+struct AuditQuery {
+    /// Maximum number of entries to return
+    limit: Option<usize>,
+    /// Filter by event type
+    event_type: Option<String>,
+    /// Filter by outcome
+    outcome: Option<String>,
+}
+
+/// Get audit logs with optional filtering
+async fn get_audit_logs(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<AuditQuery>,
+) -> Json<Value> {
+    let limit = query.limit.unwrap_or(100);
+
+    let entries = if let Some(event_type) = query.event_type {
+        // Parse event type
+        let event = match event_type.as_str() {
+            "auth_attempt" => Some(AuditEventType::AuthAttempt),
+            "config_change" => Some(AuditEventType::ConfigChange),
+            "rule_added" => Some(AuditEventType::RuleAdded),
+            "rule_deleted" => Some(AuditEventType::RuleDeleted),
+            "rules_imported" => Some(AuditEventType::RulesImported),
+            "config_reload" => Some(AuditEventType::ConfigReload),
+            "database_scan" => Some(AuditEventType::DatabaseScan),
+            "schema_query" => Some(AuditEventType::SchemaQuery),
+            "api_access" => Some(AuditEventType::ApiAccess),
+            _ => None,
+        };
+        if let Some(e) = event {
+            state.audit_logger.get_entries_by_type(e, Some(limit)).await
+        } else {
+            state.audit_logger.get_entries(Some(limit)).await
+        }
+    } else if let Some(outcome) = query.outcome {
+        // Parse outcome
+        let out = match outcome.as_str() {
+            "success" => Some(AuditOutcome::Success),
+            "failure" => Some(AuditOutcome::Failure),
+            "denied" => Some(AuditOutcome::Denied),
+            _ => None,
+        };
+        if let Some(o) = out {
+            state.audit_logger.get_entries_by_outcome(o, Some(limit)).await
+        } else {
+            state.audit_logger.get_entries(Some(limit)).await
+        }
+    } else {
+        state.audit_logger.get_entries(Some(limit)).await
+    };
+
+    Json(json!({
+        "count": entries.len(),
+        "entries": entries
     }))
 }
 
@@ -617,6 +766,7 @@ mod tests {
             api: None,
             limits: None,
             health_check: None,
+            audit: None,
         };
         let state = AppState::new_for_test(config, "proxy.yaml".to_string());
 
@@ -638,6 +788,7 @@ mod tests {
             api: None,
             limits: None,
             health_check: None,
+            audit: None,
         };
         let state = AppState::new_for_test(config, "proxy.yaml".to_string());
 
@@ -664,6 +815,7 @@ mod tests {
             api: None,
             limits: None,
             health_check: None,
+            audit: None,
         };
         let state = AppState::new_for_test(config, "/tmp/test_proxy.yaml".to_string());
 
@@ -700,6 +852,7 @@ mod tests {
             api: None,
             limits: None,
             health_check: None,
+            audit: None,
         };
         let state = AppState::new_for_test(config, "proxy.yaml".to_string());
 
@@ -721,6 +874,7 @@ mod tests {
             api: None,
             limits: None,
             health_check: None,
+            audit: None,
         };
         let state = AppState::new_for_test(config, "proxy.yaml".to_string());
 

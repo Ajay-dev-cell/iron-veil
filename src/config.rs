@@ -19,6 +19,8 @@ pub struct AppConfig {
     pub limits: Option<LimitsConfig>,
     #[serde(default)]
     pub health_check: Option<HealthCheckConfig>,
+    #[serde(default)]
+    pub audit: Option<AuditConfig>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -117,6 +119,83 @@ pub struct ApiConfig {
     pub jwt_secret: Option<String>,
 }
 
+/// Audit event types to log
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AuditEventType {
+    AuthAttempt,
+    ConfigChange,
+    RuleAdded,
+    RuleDeleted,
+    RulesImported,
+    ConfigReload,
+    DatabaseScan,
+    SchemaQuery,
+    ApiAccess,
+}
+
+/// Configuration for audit logging
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct AuditConfig {
+    /// Enable audit logging (default: true)
+    #[serde(default = "default_audit_enabled")]
+    pub enabled: bool,
+
+    /// Log to stdout in addition to file (default: false)
+    #[serde(default)]
+    pub log_to_stdout: bool,
+
+    /// Path to audit log file (optional)
+    #[serde(default)]
+    pub log_file: Option<String>,
+
+    /// Enable log rotation (default: true)
+    #[serde(default = "default_audit_rotation")]
+    pub rotation_enabled: bool,
+
+    /// Maximum log file size in bytes before rotation (default: 10MB)
+    #[serde(default = "default_audit_max_size")]
+    pub max_file_size_bytes: u64,
+
+    /// Maximum number of rotated files to keep (default: 5)
+    #[serde(default = "default_audit_max_files")]
+    pub max_rotated_files: usize,
+
+    /// Events to log (if empty, logs all events)
+    #[serde(default)]
+    pub events: Vec<AuditEventType>,
+}
+
+fn default_audit_enabled() -> bool {
+    true
+}
+
+fn default_audit_rotation() -> bool {
+    true
+}
+
+fn default_audit_max_size() -> u64 {
+    10 * 1024 * 1024 // 10 MB
+}
+
+fn default_audit_max_files() -> usize {
+    5
+}
+
+impl Default for AuditConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            log_to_stdout: false,
+            log_file: None,
+            rotation_enabled: true,
+            max_file_size_bytes: default_audit_max_size(),
+            max_rotated_files: default_audit_max_files(),
+            events: vec![],
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct TlsConfig {
     pub enabled: bool,
@@ -164,6 +243,7 @@ impl Default for AppConfig {
             api: None,
             limits: None,
             health_check: None,
+            audit: None,
         }
     }
 }

@@ -206,13 +206,43 @@ health_check:
 
 **Files:** `src/main.rs`, `src/config.rs`
 
-### 16. Audit Logging
-- [ ] Log all configuration changes
-- [ ] Log authentication attempts
-- [ ] Structured audit log format
-- [ ] Log rotation support
+### 16. Audit Logging ✅
+- [x] Log all configuration changes
+- [x] Log authentication attempts (success/failure/denied)
+- [x] Structured JSON audit log format
+- [x] Log rotation support (configurable file size and retention)
+- [x] In-memory audit log storage (last 1000 entries)
+- [x] API endpoint to query audit logs with filtering
 
-**Files:** `src/api.rs`, `src/state.rs`
+**Audit Events Logged:**
+- `auth_attempt` - Authentication success, failure, or denied
+- `config_change` - Configuration updates (with old/new values)
+- `rule_added` - New masking rule added
+- `rule_deleted` - Masking rule removed
+- `rules_imported` - Bulk rule import
+- `config_reload` - Config reloaded from disk
+- `database_scan` - PII scan performed
+- `schema_query` - Schema discovery query
+
+**API Endpoint:**
+- `GET /audit` - Get audit logs
+- `GET /audit?limit=N` - Limit results
+- `GET /audit?event_type=<type>` - Filter by event type
+- `GET /audit?outcome=<outcome>` - Filter by outcome (success/failure/denied)
+
+**Configuration:**
+```yaml
+audit:
+  enabled: true
+  log_to_stdout: false
+  log_file: "/var/log/ironveil/audit.log"
+  rotation_enabled: true
+  max_file_size_bytes: 10485760  # 10MB
+  max_rotated_files: 5
+  events: []  # Empty = log all events
+```
+
+**Files:** `src/audit.rs` (new), `src/api.rs`, `src/state.rs`, `src/config.rs`, `Cargo.toml`
 
 ---
 

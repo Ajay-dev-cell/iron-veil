@@ -22,6 +22,7 @@ src/
 ├── state.rs         # Shared AppState (config, logs, connections)
 ├── scanner.rs       # Regex-based PII detection
 ├── db_scanner.rs    # Real database introspection & PII scanning
+├── audit.rs         # Structured audit logging with rotation support
 ├── interceptor.rs   # Anonymizer trait + implementations for PG and MySQL
 ├── telemetry.rs     # OpenTelemetry initialization
 └── protocol/
@@ -59,6 +60,7 @@ src/
 - Management API with live query inspector
 - Real database introspection (information_schema queries)
 - PII scanning with confidence scores and sample masking
+- Structured audit logging with file rotation
 
 ## Frontend Guidelines
 - Use Functional Components with Hooks.

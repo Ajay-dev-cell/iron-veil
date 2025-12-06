@@ -1,66 +1,39 @@
+masking_enabled: true
+rules:
+- table: users
+  column: email
+  strategy: email
+- table: users
+  column: phone_number
+  strategy: phone
+- table: null
+  column: address
+  strategy: address
+- table: null
+  column: test
+  strategy: email
 tls:
   enabled: false
-  cert_path: "certs/server.crt"
-  key_path: "certs/server.key"
-
+  cert_path: certs/server.crt
+  key_path: certs/server.key
 upstream_tls: false
-
-# OpenTelemetry Configuration
-# Traces are exported to an OTLP-compatible collector (Jaeger, Grafana Tempo, etc.)
 telemetry:
   enabled: false
-  otlp_endpoint: "http://localhost:4317"
-  service_name: "iron-veil"
-
-# Management API Configuration
-api:
-  # API key for authenticating management API requests.
-  # If set, all sensitive endpoints require `X-API-Key` header.
-  # Uncomment and set a secure key for production use:
-  # api_key: "your-secure-api-key-here"
-  
-  # JWT secret for token-based authentication.
-  # If set, endpoints also accept `Authorization: Bearer <token>` header.
-  # Uncomment and set a secure secret for production use:
-  # jwt_secret: "your-jwt-secret-here"
-
-# Connection Limits
-limits:
-  # Maximum number of concurrent connections (default: unlimited)
-  # max_connections: 1000
-  
-  # Rate limit: max new connections per second (default: unlimited)
-  # connections_per_second: 100
-  
-  # Timeout for establishing upstream connection in seconds (default: 30)
-  # connect_timeout_secs: 30
-  
-  # Idle timeout - close connection after no activity in seconds (default: 300)
-  # idle_timeout_secs: 300
-
-# Upstream Health Check Configuration
+  otlp_endpoint: http://localhost:4317
+  service_name: iron-veil
+api: null
+limits: null
 health_check:
-  # Enable upstream health checks (default: true)
   enabled: true
-  
-  # Interval between health checks in seconds (default: 10)
-  # interval_secs: 10
-  
-  # Timeout for health check connection in seconds (default: 5)
-  # timeout_secs: 5
-  
-  # Number of consecutive failures before marking unhealthy (default: 3)
-  # unhealthy_threshold: 3
-  
-  # Number of consecutive successes before marking healthy (default: 1)
-  # healthy_threshold: 1
-
-rules:
-  - table: "users"
-    column: "email"
-    strategy: "email"
-  - table: "users"
-    column: "phone_number"
-    strategy: "phone"
-  - column: "address" # Global rule for any column named "address"
-    strategy: "address"
+  interval_secs: 10
+  timeout_secs: 5
+  unhealthy_threshold: 3
+  healthy_threshold: 1
+audit:
+  enabled: true
+  log_to_stdout: false
+  log_file: null
+  rotation_enabled: true
+  max_file_size_bytes: 10485760
+  max_rotated_files: 5
+  events: []

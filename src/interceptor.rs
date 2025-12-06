@@ -536,6 +536,7 @@ mod tests {
             api: None,
             limits: None,
             health_check: None,
+            audit: None,
         };
         let state = AppState::new_for_test(config, "proxy.yaml".to_string());
         let mut anonymizer = Anonymizer::new(state, 1);
@@ -577,6 +578,7 @@ mod tests {
             api: None,
             limits: None,
             health_check: None,
+            audit: None,
         };
         let state = AppState::new_for_test(config, "proxy.yaml".to_string());
         let mut anonymizer = Anonymizer::new(state, 1);
@@ -621,6 +623,7 @@ mod tests {
             api: None,
             limits: None,
             health_check: None,
+            audit: None,
         };
         let state = AppState::new_for_test(config, "proxy.yaml".to_string());
         let mut anonymizer = Anonymizer::new(state, 1);
@@ -675,6 +678,7 @@ mod tests {
             api: None,
             limits: None,
             health_check: None,
+            audit: None,
         };
         let state = AppState::new_for_test(config, "proxy.yaml".to_string());
         let mut anonymizer = Anonymizer::new(state, 1);
@@ -722,6 +726,7 @@ mod tests {
             api: None,
             limits: None,
             health_check: None,
+            audit: None,
         };
         let state = AppState::new_for_test(config, "proxy.yaml".to_string());
         let mut anonymizer = Anonymizer::new(state, 1);
@@ -758,6 +763,7 @@ mod tests {
             api: None,
             limits: None,
             health_check: None,
+            audit: None,
         };
         let state = AppState::new_for_test(config, "proxy.yaml".to_string());
         let mut anonymizer = Anonymizer::new(state, 1);
@@ -788,6 +794,7 @@ mod tests {
             api: None,
             limits: None,
             health_check: None,
+            audit: None,
         };
         let state = AppState::new_for_test(config, "proxy.yaml".to_string());
         let mut anonymizer = Anonymizer::new(state, 1);
