@@ -263,11 +263,43 @@ audit:
 - [ ] Reduce upstream load
 - [ ] Cache invalidation strategy
 
-### 20. Web UI Enhancements
-- [ ] Rule testing/preview
-- [ ] Visual query builder
-- [ ] Connection statistics graphs
-- [ ] Dark/light theme toggle
+### 20. Web UI Enhancements ✅
+- [x] Rule testing/preview (with live masking preview dialog)
+- [x] Connection statistics graphs (real-time charts using Recharts)
+- [x] Dark/light theme toggle (using next-themes)
+- [x] Enhanced dashboard with metrics tabs
+- [x] Reusable UI component library (Button, Dialog, Tabs, Switch, Badge, etc.)
+- [x] Animated transitions with Framer Motion
+
+**Features Implemented:**
+- **Rule Testing Dialog**: Test masking strategies with sample data before saving rules
+- **Live Preview**: See masked output in real-time as you configure rules
+- **Connection Charts**: Area charts showing connections, queries, and masked fields over time
+- **Masking Stats**: Bar/distribution charts showing masking operations by strategy
+- **Theme System**: Dark/Light/System themes with persistent preference
+- **Dashboard Tabs**: Organized view with Connections, Masking Stats, and Activity tabs
+- **Enhanced Settings**: Theme toggle, notification settings, strict mode toggles
+- **Improved Rules Page**: Quick preview, delete confirmation, strategy badges
+
+**UI Components Added:**
+- Button (with variants: default, destructive, outline, secondary, ghost, success, warning)
+- Dialog (modal dialogs with Radix UI)
+- Switch (toggle switches)
+- Tabs (tabbed content)
+- Badge (status indicators)
+- Input/Select/Label (form components)
+- Tooltip (hover tooltips)
+- StatsCard (metric display cards)
+- Charts (ConnectionsChart, MultiLineChart, MaskingStatsChart, QueryTypesChart)
+
+**Dependencies Added:**
+- `recharts` - Charting library
+- `next-themes` - Theme management
+- `@radix-ui/react-*` - Accessible UI primitives
+- `class-variance-authority` - Component variants
+- `clsx` + `tailwind-merge` - Conditional class names
+
+**Files:** `web/src/components/`, `web/src/app/`, `web/src/lib/utils.ts`
 
 ---
 
@@ -275,19 +307,19 @@ audit:
 
 | Category | Total | Completed | Remaining |
 |----------|-------|-----------|-----------|
-| 🔴 Critical | 6 | 0 | 6 |
-| 🟡 High Priority | 5 | 0 | 5 |
-| 🟢 Medium Priority | 5 | 0 | 5 |
-| 🔵 Low Priority | 4 | 0 | 4 |
-| **Total** | **20** | **0** | **20** |
+| 🔴 Critical | 6 | 6 | 0 |
+| 🟡 High Priority | 5 | 5 | 0 |
+| 🟢 Medium Priority | 5 | 5 | 0 |
+| 🔵 Low Priority | 4 | 1 | 3 |
+| **Total** | **20** | **17** | **3** |
 
 ---
 
 ## Quick Wins (Can Be Done in < 1 Hour Each)
 
-1. Create `.dockerignore` file
-2. Fix `unwrap()` calls (5 locations)
-3. Add connection timeout config
+1. ~~Create `.dockerignore` file~~ ✅
+2. ~~Fix `unwrap()` calls (5 locations)~~ ✅
+3. ~~Add connection timeout config~~ ✅
 4. Fetch version dynamically in settings page
 
 ---
