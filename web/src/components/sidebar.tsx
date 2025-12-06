@@ -64,14 +64,13 @@ export function Sidebar() {
     <div className="space-y-4 py-4 flex flex-col h-full bg-[#111827] text-white border-r border-gray-800">
       <div className="px-3 py-2 flex-1">
         <Link href="/" className="flex items-center pl-3 mb-14">
-          <div className="relative w-8 h-8 mr-4">
+          <div className="relative w-8 h-8 mr-4 flex items-center justify-center">
             <Image
               src="/logo.png"
               alt="IronVeil Logo"
               width={32}
               height={32}
-              className="object-contain"
-              style={{ width: "auto", height: "auto" }}
+              className="object-contain w-8 h-8"
             />
           </div>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">
