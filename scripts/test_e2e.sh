@@ -536,6 +536,34 @@ run_api_tests() {
         fi
     fi
     
+    # Stats endpoint (Application Statistics)
+    log_section "Test: Stats Endpoint"
+    response=$(curl -s http://localhost:$API_PORT/stats)
+    echo "$response"
+    
+    # Verify stats endpoint returns expected fields
+    assert_api_response "$response" "active_connections" "Stats returns active_connections"
+    assert_api_response "$response" "total_connections" "Stats returns total_connections"
+    assert_api_response "$response" "masking" "Stats returns masking object"
+    assert_api_response "$response" "queries" "Stats returns queries object"
+    assert_api_response "$response" "history" "Stats returns history array"
+    
+    # Run a query to generate stats
+    docker run --rm -e PGPASSWORD=password postgres:16 \
+        psql -h $DOCKER_HOST_ADDR -p $PROXY_PORT -U postgres -c "SELECT email FROM users LIMIT 1;" &>/dev/null || true
+    sleep 1
+    
+    # Verify stats updated after query
+    response=$(curl -s http://localhost:$API_PORT/stats)
+    local total_queries
+    total_queries=$(echo "$response" | grep -o '"total":[0-9]*' | head -1 | grep -o '[0-9]*')
+    
+    if [ -n "$total_queries" ] && [ "$total_queries" -ge 1 ]; then
+        log_success "Stats shows query count >= 1 after SELECT query (got $total_queries)"
+    else
+        log_error "Stats query count not incremented (got: $total_queries)"
+    fi
+    
     kill $PROXY_PID 2>/dev/null || true
     PROXY_PID=""
 }
